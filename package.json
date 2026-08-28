@@ -1,0 +1,12 @@
+{
+  "name": "mongodb-agent-template",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "agent": "pnpm --filter @mongodb-agent-template/agent",
+    "frontend": "pnpm --filter @mongodb-agent-template/frontend",
+    "load-skills": "pnpm --filter @mongodb-agent-template/agent load-skills"
+  }
+}
