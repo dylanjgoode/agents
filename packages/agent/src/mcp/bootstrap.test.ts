@@ -18,6 +18,9 @@ import {
   ensureOrgMcpCredentials,
   getMcpConfigName,
   getMcpCredentialsPath,
+  getPinnedMcpConfigName,
+  MCP_CONFIG_NAME_PREFIX,
+  newSessionMcpConfigName,
 } from "./bootstrap.js";
 
 const CREDENTIALS_PATH = path.resolve(
@@ -84,17 +87,28 @@ describe("MCP bootstrap helpers", () => {
     expect(getMcpCredentialsPath()).toBe(CREDENTIALS_PATH);
   });
 
-  it("getMcpConfigName defaults and honors MCP_CONFIG_NAME", () => {
+  it("getPinnedMcpConfigName is unset by default and honors MCP_CONFIG_NAME", () => {
     const previous = process.env.MCP_CONFIG_NAME;
     delete process.env.MCP_CONFIG_NAME;
-    expect(getMcpConfigName()).toBe("mongodb-agent-template");
+    expect(getPinnedMcpConfigName()).toBeUndefined();
+    expect(getMcpConfigName()).toBe(MCP_CONFIG_NAME_PREFIX);
     process.env.MCP_CONFIG_NAME = "  custom-config  ";
+    expect(getPinnedMcpConfigName()).toBe("custom-config");
     expect(getMcpConfigName()).toBe("custom-config");
     if (previous === undefined) {
       delete process.env.MCP_CONFIG_NAME;
     } else {
       process.env.MCP_CONFIG_NAME = previous;
     }
+  });
+
+  it("newSessionMcpConfigName is unique per call", () => {
+    const a = newSessionMcpConfigName();
+    const b = newSessionMcpConfigName();
+    expect(a).toMatch(
+      new RegExp(`^${MCP_CONFIG_NAME_PREFIX}-[0-9a-f-]{36}$`, "i"),
+    );
+    expect(a).not.toBe(b);
   });
 });
 
@@ -160,20 +174,21 @@ describe("bootstrapAtlasMcp", () => {
     );
   });
 
-  it("creates a new org MCP config and persists the one-time secret", async () => {
+  it("creates a unique org MCP config per session and persists the one-time secret", async () => {
+    let createdName: string | undefined;
     installFetchMock((url, init) => {
       const method = (init.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/mcpConfigs?") && !url.includes("/secrets")) {
-        return jsonResponse({ results: [], totalCount: 0 });
-      }
       if (method === "POST" && /\/mcpConfigs$/.test(new URL(url).pathname)) {
         const body = JSON.parse(String(init.body));
-        expect(body.mcpConfigName).toBe("mongodb-agent-template");
+        expect(body.mcpConfigName).toMatch(
+          new RegExp(`^${MCP_CONFIG_NAME_PREFIX}-[0-9a-f-]{36}$`, "i"),
+        );
         expect(body.roles).toEqual(["ORG_OWNER"]);
         expect(body.ipAccessList).toEqual([{ ipAddress: "203.0.113.9" }]);
+        createdName = body.mcpConfigName;
         return jsonResponse({
           mcpConfigId: "cfg-new",
-          mcpConfigName: "mongodb-agent-template",
+          mcpConfigName: body.mcpConfigName,
           clientId: "client-new",
         });
       }
@@ -185,17 +200,59 @@ describe("bootstrapAtlasMcp", () => {
 
     const creds = await bootstrapAtlasMcp();
 
+    expect(createdName).toBeDefined();
     expect(creds).toEqual({
       orgId: "org-1",
       mcpConfigId: "cfg-new",
-      mcpConfigName: "mongodb-agent-template",
+      mcpConfigName: createdName,
       clientId: "client-new",
       clientSecret: "one-time-secret",
     });
     expect(credsOnDisk).toContain("one-time-secret");
   });
 
-  it("does not blindly create a secret when an existing secret cannot be matched to the missing local cache", async () => {
+  it("does not attach a new session to an existing shared-name config", async () => {
+    const methods: string[] = [];
+    installFetchMock((url, init) => {
+      const method = (init.method ?? "GET").toUpperCase();
+      methods.push(`${method} ${new URL(url).pathname}`);
+      if (method === "GET" && url.includes("/mcpConfigs?")) {
+        return jsonResponse({
+          results: [
+            {
+              mcpConfigId: "cfg-shared",
+              mcpConfigName: MCP_CONFIG_NAME_PREFIX,
+              clientId: "client-shared",
+              ipAccessList: [{ ipAddress: "203.0.113.9" }],
+            },
+          ],
+          totalCount: 1,
+        });
+      }
+      if (method === "POST" && /\/mcpConfigs$/.test(new URL(url).pathname)) {
+        const body = JSON.parse(String(init.body));
+        expect(body.mcpConfigName).not.toBe(MCP_CONFIG_NAME_PREFIX);
+        return jsonResponse({
+          mcpConfigId: "cfg-session",
+          mcpConfigName: body.mcpConfigName,
+          clientId: "client-session",
+        });
+      }
+      if (method === "POST" && url.includes("/secrets")) {
+        expect(url).toContain("cfg-session");
+        return jsonResponse({ secret: "session-secret" });
+      }
+      return jsonResponse({ detail: `unhandled ${method} ${url}` }, 500);
+    });
+
+    const creds = await bootstrapAtlasMcp();
+    expect(creds.mcpConfigId).toBe("cfg-session");
+    expect(creds.clientSecret).toBe("session-secret");
+    expect(methods.some((m) => m.includes("cfg-shared"))).toBe(false);
+  });
+
+  it("does not blindly create a secret when a pinned config already has unmatched remote secrets", async () => {
+    process.env.MCP_CONFIG_NAME = "mongodb-agent-template";
     const methods: string[] = [];
     installFetchMock((url, init) => {
       const method = (init.method ?? "GET").toUpperCase();
@@ -228,7 +285,8 @@ describe("bootstrapAtlasMcp", () => {
     expect(methods.some((method) => method.startsWith("POST"))).toBe(false);
   });
 
-  it("fails before secret creation when the existing remote service account is at the two-secret limit", async () => {
+  it("fails before secret creation when a pinned config is at the two-secret limit", async () => {
+    process.env.MCP_CONFIG_NAME = "mongodb-agent-template";
     const methods: string[] = [];
     installFetchMock((url, init) => {
       const method = (init.method ?? "GET").toUpperCase();
@@ -264,7 +322,8 @@ describe("bootstrapAtlasMcp", () => {
     expect(methods.some((method) => method.startsWith("POST"))).toBe(false);
   });
 
-  it("translates an Atlas secret-limit race into actionable recovery instructions", async () => {
+  it("translates an Atlas secret-limit race into actionable recovery instructions for a pinned config", async () => {
+    process.env.MCP_CONFIG_NAME = "mongodb-agent-template";
     installFetchMock((url, init) => {
       const method = (init.method ?? "GET").toUpperCase();
       if (method === "GET" && url.includes("/mcpConfigs?")) {

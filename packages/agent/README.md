@@ -16,6 +16,12 @@ pnpm langgraph
 
 That runs `langgraphjs dev --no-browser` in this package. It starts only the local Agent Server at `http://localhost:2024` (no Docker) and does not open or require the hosted LangSmith Studio frontend.
 
-The CLI may still print the optional Studio URL, but `--no-browser` prevents launching it. LangSmith Studio is a separately hosted web frontend, even when it connects to this local API. This repository does not provide a fully local Studio UI. For a fully local web UI, implement the placeholder `@mongodb-agent-template/frontend` package.
-
 The JS CLI has no `watch` field in `langgraph.json`. `langgraphjs dev` hot-reloads graph source and restarts when `langgraph.json` or the env file changes.
+
+## Playground UI
+
+You can use the LangGraph Agent Chat UI to interact with the agent.
+
+1. Run the server locally with `pnpm langgraph`
+2. Open the Agent Chat UI at `https://agentchat.vercel.app/?apiUrl=http://localhost:2024&assistantId=agent`
+3. You should be able to interact with the agent running locally from that website.

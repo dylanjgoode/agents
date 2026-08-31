@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,7 +6,8 @@ import { env } from "../env.js";
 
 const ATLAS_API_BASE = "https://cloud.mongodb.com/api/atlas/v2";
 const ATLAS_API_ACCEPT = "application/vnd.atlas.2025-03-12+json";
-const DEFAULT_MCP_CONFIG_NAME = "mongodb-agent-template";
+/** Prefix for per-session config names. Do not reuse this string as a shared org-wide config. */
+export const MCP_CONFIG_NAME_PREFIX = "mongodb-agent-template";
 const SECRET_EXPIRES_AFTER_HOURS = 8760;
 const ORG_MCP_ROLES = ["ORG_OWNER"] as const;
 const PUBLIC_IP_URLS = [
@@ -58,19 +59,35 @@ export function getMcpCredentialsPath(): string {
   return CREDENTIALS_PATH;
 }
 
+/** Pinned name from `MCP_CONFIG_NAME`, or undefined to mint a per-session config. */
+export function getPinnedMcpConfigName(): string | undefined {
+  const pinned = process.env.MCP_CONFIG_NAME?.trim();
+  return pinned || undefined;
+}
+
+/** @deprecated Prefer `getPinnedMcpConfigName` or `newSessionMcpConfigName`. */
 export function getMcpConfigName(): string {
-  return process.env.MCP_CONFIG_NAME?.trim() || DEFAULT_MCP_CONFIG_NAME;
+  return getPinnedMcpConfigName() ?? MCP_CONFIG_NAME_PREFIX;
+}
+
+/** Unique org MCP config name so each agent instance has its own revocable secret. */
+export function newSessionMcpConfigName(): string {
+  return `${MCP_CONFIG_NAME_PREFIX}-${randomUUID()}`;
 }
 
 /**
- * Create-or-reuse an organization MCP configuration and ingress secret.
- * Persists `mcpConfigId`, `clientId`, and `clientSecret` locally so boots
- * do not leak configs. The one-time secret is never placed in LLM context.
+ * Bind this agent instance to an org MCP config and one-time secret.
+ *
+ * Default: new unique config name per session (`mongodb-agent-template-<uuid>`).
+ * Reuse only this instance's local cache (same process restarts). Do not share
+ * one org-wide name — that makes instances share a service account / secret cap.
+ *
+ * Pin with `MCP_CONFIG_NAME` when you explicitly want a shared/stable config
+ * (still refuses to mint a second secret if remote secrets already exist).
  */
 export async function bootstrapAtlasMcp(): Promise<McpCredentials> {
   const orgId = requireAtlasEnv();
   const publicIp = await resolvePublicIp();
-  const configName = getMcpConfigName();
   const local = loadLocalCredentials();
 
   if (local && local.orgId === orgId && local.clientSecret) {
@@ -81,6 +98,29 @@ export async function bootstrapAtlasMcp(): Promise<McpCredentials> {
     }
   }
 
+  const pinned = getPinnedMcpConfigName();
+  if (pinned) {
+    return bootstrapPinnedConfig(orgId, publicIp, pinned, local);
+  }
+
+  const configName = newSessionMcpConfigName();
+  const created = await createOrgMcpConfig(orgId, configName, publicIp);
+  const secret = await createOrgMcpSecret(orgId, created);
+  return persistCredentials({
+    orgId,
+    mcpConfigId: created.mcpConfigId,
+    mcpConfigName: created.mcpConfigName ?? configName,
+    clientId: created.clientId,
+    clientSecret: secret,
+  });
+}
+
+async function bootstrapPinnedConfig(
+  orgId: string,
+  publicIp: string,
+  configName: string,
+  local: McpCredentials | undefined,
+): Promise<McpCredentials> {
   const byName = await findOrgMcpConfigByName(orgId, configName);
   if (byName) {
     await ensureCurrentIpAllowlisted(orgId, byName, publicIp);

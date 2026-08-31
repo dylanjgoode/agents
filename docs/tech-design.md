@@ -104,11 +104,11 @@ Those keys cannot call the Managed MCP Server directly. The template implements 
 
 Do **not** spawn `npx mongodb-atlas-mcp-remote` as a stdio sidecar. MongoDB’s LangChain guidance is to fetch a token and call the managed server from application code. Reimplement the token fetch, cache, and refresh behavior of that package in-process.
 
-**Bootstrap (once per environment, or when config is missing):**
+**Bootstrap (once per agent instance, or when the local cache is missing):**
 
 1. Digest-authenticate to the Atlas Admin API with `PUBLIC_API_KEY` / `PRIVATE_API_KEY`.
-2. Create an organization MCP configuration (`createOrgMcpConfig`) with a name, roles (e.g. `ORG_OWNER`), and `ipAccessList` containing the caller’s IP or CIDR.
-3. Create a secret (`createOrgMcpSecret`). The secret is returned once. Persist `mcpConfigId`, `clientId`, and `clientSecret` as process secrets, not in the LLM context.
+2. Create an organization MCP configuration (`createOrgMcpConfig`) with a **per-session name** `mongodb-agent-template-<uuid>`, roles (e.g. `ORG_OWNER`), and `ipAccessList` containing the caller’s IP. Each instance gets its own service account / secret so one token can be revoked without affecting others. Reuse only this instance’s gitignored `.mcp-credentials.json`. Pin a stable name with `MCP_CONFIG_NAME` only when you explicitly want to share a config.
+3. Create a secret (`createOrgMcpSecret`). The secret is returned once. Persist `mcpConfigId`, `clientId`, and `clientSecret` as process secrets, not in the LLM context. Do not mint a second secret on a pinned config that already has remote secrets.
 
 **Runtime (every MCP session):**
 
@@ -194,4 +194,4 @@ Notes for that phase:
 
 1. **Magenta egress IPs.** Docs state that Magenta has egress IPs; the values are not published. Managed MCP will 403 until those CIDRs are on `ipAccessList`. Blocker for Magenta; obtain the list from the Magenta team and verify against a deployed agent. Not a local-v0 blocker.
 2. **Magenta secrets as env vars.** No public confirmation that platform secrets appear as `OPENAI_API_KEY` (or equivalent) in the agent process. Keep a thin env adapter so mapping can change without touching model construction.
-3. **MCP config lifecycle.** Creating a new org MCP config and secret on every local start will leak configs and one-time secrets. Decide whether to reuse an existing config by name, persist client credentials locally, or document a one-time bootstrap command. Not decided in scope; implement reuse-or-create rather than create-every-boot.
+3. **MCP config leak.** Per-session configs (`mongodb-agent-template-<uuid>`) avoid sharing one service account, but deleting `.mcp-credentials.json` or restarting without a cache creates another Atlas MCP config. Orphaned configs are not auto-deleted. Pin `MCP_CONFIG_NAME` for a stable identity; that path still refuses extra secrets if the local cache is gone.

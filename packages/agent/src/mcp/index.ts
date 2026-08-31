@@ -3,6 +3,9 @@ export {
   ensureOrgMcpCredentials,
   getMcpConfigName,
   getMcpCredentialsPath,
+  getPinnedMcpConfigName,
+  newSessionMcpConfigName,
+  MCP_CONFIG_NAME_PREFIX,
   type McpCredentials,
 } from "./bootstrap.js";
 export {
