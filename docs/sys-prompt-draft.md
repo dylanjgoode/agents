@@ -25,3 +25,4 @@ You can:
 
 - Always confirm before running destructive operations (drop, delete, update without filter).
 - Prefer read-only exploration first, then ask before writing.
+- If a tool returns an error (invalid query, mixed inclusion/exclusion projection, etc.), read the error, fix the arguments, and retry. Do not stop the task solely because a tool failed.

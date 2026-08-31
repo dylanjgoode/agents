@@ -1,6 +1,7 @@
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import type { DynamicStructuredTool } from "@langchain/core/tools";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 import { bootstrapAtlasMcp } from "./bootstrap.js";
+import { wrapToolErrorsAsResults } from "./tool-errors.js";
 import {
   createAtlasMcpAuthProvider,
   createTokenManager,
@@ -10,7 +11,7 @@ import {
 
 const LOCAL_ATLAS_TOOL_PREFIX = "atlas-local-";
 
-let toolsPromise: Promise<DynamicStructuredTool[]> | undefined;
+let toolsPromise: Promise<StructuredToolInterface[]> | undefined;
 
 export function isLocalAtlasTool(name: string): boolean {
   const bareName = name.includes("__")
@@ -57,11 +58,11 @@ export async function createAtlasMcpClient(
  * Bootstraps org MCP config if needed, attaches a refreshed Bearer token,
  * and drops any `atlas-local-*` tools.
  */
-export async function getMcpTools(): Promise<DynamicStructuredTool[]> {
+export async function getMcpTools(): Promise<StructuredToolInterface[]> {
   toolsPromise ??= (async () => {
     const client = await createAtlasMcpClient();
     const tools = await client.getTools();
-    return excludeLocalAtlasTools(tools);
+    return excludeLocalAtlasTools(tools).map(wrapToolErrorsAsResults);
   })().catch((error: unknown) => {
     toolsPromise = undefined;
     throw error;

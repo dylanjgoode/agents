@@ -25,3 +25,8 @@ export {
   getTools,
   isLocalAtlasTool,
 } from "./client.js";
+export {
+  formatToolErrorForAgent,
+  recoverToolErrorsMiddleware,
+  wrapToolErrorsAsResults,
+} from "./tool-errors.js";

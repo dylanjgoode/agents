@@ -20,6 +20,7 @@ vi.mock("./mcp/client.js", () => ({
 
 vi.mock("langchain", () => ({
   todoListMiddleware,
+  createMiddleware: (config: { name: string }) => config,
 }));
 
 vi.mock("deepagents", () => {
@@ -96,7 +97,10 @@ describe("createGraph", () => {
     expect(opts.permissions).toEqual([
       { operations: ["write"], paths: ["/skills/**"], mode: "deny" },
     ]);
-    expect(opts.middleware).toEqual([{ name: "todoListMiddleware" }]);
+    expect(opts.middleware).toEqual([
+      { name: "todoListMiddleware" },
+      expect.objectContaining({ name: "recoverToolErrors" }),
+    ]);
     expect(typeof opts.systemPrompt).toBe("string");
     expect(opts.systemPrompt).toContain("DeepAtlas");
 

@@ -6,6 +6,7 @@ vi.mock("./llm.js", () => ({
 
 vi.mock("langchain", () => ({
   todoListMiddleware: () => ({ name: "todoListMiddleware" }),
+  createMiddleware: (config: { name: string }) => config,
 }));
 
 vi.mock("deepagents", () => ({

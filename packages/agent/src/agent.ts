@@ -12,6 +12,7 @@ import { MemorySaver } from "@langchain/langgraph";
 import { todoListMiddleware } from "langchain";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import { createChatModel } from "./llm.js";
+import { recoverToolErrorsMiddleware } from "./mcp/tool-errors.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -137,7 +138,7 @@ export async function createGraph(
     permissions: [
       { operations: ["write"], paths: ["/skills/**"], mode: "deny" },
     ],
-    middleware: [todoListMiddleware()],
+    middleware: [todoListMiddleware(), recoverToolErrorsMiddleware],
     interruptOn: options.interruptOn ?? DESTRUCTIVE_MCP_INTERRUPT_ON,
     checkpointer: options.checkpointer ?? new MemorySaver(),
   });
