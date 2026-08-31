@@ -12,11 +12,11 @@ const PROMPT_CANDIDATES = [
 ];
 
 describe("system prompt", () => {
-  it("loads a non-empty DeepAtlas prompt from disk", () => {
+  it("loads a non-empty Atlas Explorer prompt from disk", () => {
     const prompt = loadSystemPrompt();
 
     expect(prompt.length).toBeGreaterThan(0);
-    expect(prompt).toContain("DeepAtlas");
+    expect(prompt).toContain("Atlas Explorer");
     expect(prompt).toBe(prompt.trim());
     expect(SYSTEM_PROMPT).toBe(prompt);
   });
@@ -34,6 +34,6 @@ describe("system prompt", () => {
   it("ships a vendored prompt.md fallback", () => {
     const vendored = path.resolve(__dirname, "prompt.md");
     expect(fs.existsSync(vendored)).toBe(true);
-    expect(fs.readFileSync(vendored, "utf8")).toContain("DeepAtlas");
+    expect(fs.readFileSync(vendored, "utf8")).toContain("Atlas Explorer");
   });
 });

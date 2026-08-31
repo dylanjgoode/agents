@@ -12,6 +12,7 @@ export type { McpCredentials } from "./mcp/index.js";
 export {
   createGraph,
   createAgentGraph,
+  createAgentBackend,
   loadMcpTools,
   DESTRUCTIVE_MCP_INTERRUPT_ON,
   SKILLS_DIR,

@@ -38,6 +38,7 @@ describe("package exports", () => {
     expect(agentPackage.bootstrapAtlasMcp).toBeTypeOf("function");
     expect(agentPackage.getMcpTools).toBeTypeOf("function");
     expect(agentPackage.env).toBeTypeOf("object");
+    expect(agentPackage.createAgentBackend).toBeTypeOf("function");
     expect(agentPackage.DESTRUCTIVE_MCP_INTERRUPT_ON["drop-database"]).toBe(true);
     expect(agentPackage.graph).toBe(agentPackage.createGraph);
   });

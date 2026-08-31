@@ -5,6 +5,7 @@ import {
   createDeepAgent,
   FilesystemBackend,
   StateBackend,
+  type AnyBackendProtocol,
   type CreateDeepAgentParams,
   type DeepAgent,
 } from "deepagents";
@@ -95,8 +96,18 @@ export async function loadMcpTools(): Promise<StructuredToolInterface[]> {
   return loader();
 }
 
-function createSkillsBackend() {
-  return new CompositeBackend(new StateBackend(), {
+/**
+ * Composite filesystem: a replaceable default backend plus vendored skills on disk.
+ *
+ * `/skills/` is always a virtual FilesystemBackend over {@link SKILLS_DIR}.
+ * Everything else goes to `stateBackend` (defaults to an ephemeral {@link StateBackend}).
+ */
+export function createAgentBackend({
+  stateBackend,
+}: {
+  stateBackend?: AnyBackendProtocol;
+}): CompositeBackend {
+  return new CompositeBackend(stateBackend ?? new StateBackend(), {
     "/skills/": new FilesystemBackend({
       rootDir: SKILLS_DIR,
       virtualMode: true,
@@ -108,7 +119,12 @@ function createSkillsBackend() {
 export type CreateGraphOptions = {
   /** Persistence for graph state. Defaults to `MemorySaver` (required when interruptOn is set). */
   checkpointer?: CreateDeepAgentParams["checkpointer"];
-  /** Skills / filesystem backend. Defaults to disk skills + StateBackend. */
+  /**
+   * Default filesystem backend for non-skills paths. Always composed with disk
+   * skills. Defaults to `StateBackend`. Ignored when {@link backend} is set.
+   */
+  stateBackend?: AnyBackendProtocol;
+  /** Full filesystem backend. When set, replaces the skills + state composite. */
   backend?: CreateDeepAgentParams["backend"];
   /** Tool list. Defaults to `loadMcpTools()`. */
   tools?: StructuredToolInterface[];
@@ -129,12 +145,14 @@ export async function createGraph(
   const model = createChatModel();
 
   return createDeepAgent({
-    name: "DeepAtlas",
+    name: "Atlas Explorer",
     model,
     tools,
     systemPrompt: SYSTEM_PROMPT,
     skills: ["/skills/"],
-    backend: options.backend ?? createSkillsBackend(),
+    backend:
+      options.backend ??
+      createAgentBackend({ stateBackend: options.stateBackend }),
     permissions: [
       { operations: ["write"], paths: ["/skills/**"], mode: "deny" },
     ],

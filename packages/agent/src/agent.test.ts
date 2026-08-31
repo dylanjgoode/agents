@@ -30,7 +30,7 @@ vi.mock("deepagents", () => {
   }
   class CompositeBackend {
     constructor(
-      public readonly state: unknown,
+      public readonly defaultBackend: unknown,
       public readonly routes: Record<string, unknown>,
     ) {}
   }
@@ -44,8 +44,9 @@ vi.mock("deepagents", () => {
   };
 });
 
-import { createDeepAgent } from "deepagents";
+import { createDeepAgent, StateBackend } from "deepagents";
 import {
+  createAgentBackend,
   createAgentGraph,
   createGraph,
   DESTRUCTIVE_MCP_INTERRUPT_ON,
@@ -88,7 +89,7 @@ describe("createGraph", () => {
 
     const opts = vi.mocked(createDeepAgent).mock.calls[0]![0];
     expect(graph).toEqual({ invoke: expect.any(Function) });
-    expect(opts.name).toBe("DeepAtlas");
+    expect(opts.name).toBe("Atlas Explorer");
     expect(opts.model).toEqual({ provider: "mock-chat-model" });
     expect(opts.tools).toEqual([]);
     expect(opts.skills).toEqual(["/skills/"]);
@@ -102,10 +103,29 @@ describe("createGraph", () => {
       expect.objectContaining({ name: "recoverToolErrors" }),
     ]);
     expect(typeof opts.systemPrompt).toBe("string");
-    expect(opts.systemPrompt).toContain("DeepAtlas");
+    expect(opts.systemPrompt).toContain("Atlas Explorer");
 
     expect(opts.backend).toEqual(
       expect.objectContaining({
+        defaultBackend: expect.any(StateBackend),
+        routes: expect.objectContaining({
+          "/skills/": expect.objectContaining({
+            options: { rootDir: SKILLS_DIR, virtualMode: true },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("composes a replaceable state backend with disk skills", async () => {
+    const stateBackend = { kind: "custom-state" };
+
+    await createGraph({ stateBackend: stateBackend as never });
+
+    const opts = vi.mocked(createDeepAgent).mock.calls[0]![0];
+    expect(opts.backend).toEqual(
+      expect.objectContaining({
+        defaultBackend: stateBackend,
         routes: expect.objectContaining({
           "/skills/": expect.objectContaining({
             options: { rootDir: SKILLS_DIR, virtualMode: true },
@@ -148,6 +168,32 @@ describe("createGraph", () => {
 
   it("is aliased as createAgentGraph", () => {
     expect(createAgentGraph).toBe(createGraph);
+  });
+});
+
+describe("createAgentBackend", () => {
+  it("defaults the state backend and mounts skills on /skills/", () => {
+    const backend = createAgentBackend();
+    expect(backend).toEqual(
+      expect.objectContaining({
+        defaultBackend: expect.any(StateBackend),
+        routes: expect.objectContaining({
+          "/skills/": expect.objectContaining({
+            options: { rootDir: SKILLS_DIR, virtualMode: true },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("uses the provided state backend as the composite default", () => {
+    const stateBackend = { kind: "store" };
+    const backend = createAgentBackend(stateBackend as never);
+    expect(backend).toEqual(
+      expect.objectContaining({
+        defaultBackend: stateBackend,
+      }),
+    );
   });
 });
 
