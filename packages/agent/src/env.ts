@@ -19,6 +19,7 @@ export const env = {
   // LLM Config
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  OPENAI_USE_RESPONSES_API: process.env.OPENAI_USE_RESPONSES_API,
   MODEL: process.env.MODEL ?? "gpt-4o",
 
   // Optional Azure OpenAI

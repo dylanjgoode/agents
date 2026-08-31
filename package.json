@@ -7,6 +7,8 @@
   "scripts": {
     "agent": "pnpm --filter @mongodb-agent-template/agent",
     "frontend": "pnpm --filter @mongodb-agent-template/frontend",
-    "load-skills": "pnpm --filter @mongodb-agent-template/agent load-skills"
+    "langgraph": "pnpm --filter @mongodb-agent-template/agent dev",
+    "load-skills": "pnpm --filter @mongodb-agent-template/agent load-skills",
+    "test": "pnpm --filter @mongodb-agent-template/agent test"
   }
 }

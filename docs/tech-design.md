@@ -56,8 +56,10 @@ pnpm workspaces. TypeScript throughout. The frontend streams the compiled LangGr
 ```
 packages/
   agent/                 # @mongodb-agent-template/agent
+    langgraph.json       # LangGraph CLI: graph export + root .env
     src/
       agent.ts           # createDeepAgent wiring
+      graph.ts           # LangGraph CLI export (`graph` = createGraph)
       env.ts             # loads root .env + package overrides
       llm.ts             # ChatOpenAI / initChatModel from env
       mcp/
@@ -69,10 +71,10 @@ packages/
   frontend/              # @mongodb-agent-template/frontend
     src/                 # local LangChain UI (useStream)
 pnpm-workspace.yaml
-package.json             # private workspace root
+package.json             # private workspace root (`pnpm langgraph` → agent `dev`)
 ```
 
-Agent dependencies: `deepagents`, `dotenv`, `langchain`, `@langchain/core`, `@langchain/langgraph`, `@langchain/openai`, `@langchain/mcp-adapters`. Frontend uses `@langchain/langgraph-sdk` (`useStream`) plus one of the [LangChain frontend integrations](https://docs.langchain.com/oss/javascript/langchain/frontend/integrations/overview).
+Agent dependencies: `deepagents`, `dotenv`, `langchain`, `@langchain/core`, `@langchain/langgraph`, `@langchain/langgraph-cli`, `@langchain/openai`, `@langchain/mcp-adapters`. Frontend uses `@langchain/langgraph-sdk` (`useStream`) plus one of the [LangChain frontend integrations](https://docs.langchain.com/oss/javascript/langchain/frontend/integrations/overview).
 
 ## Tools and MCP integration
 
@@ -134,9 +136,10 @@ LangGraph does not read API keys. Model packages do. The template constructs a c
 | --- | --- |
 | `OPENAI_API_KEY` | API key. `ChatOpenAI` reads this. |
 | `OPENAI_BASE_URL` | Base URL (optional). |
+| `OPENAI_USE_RESPONSES_API` | Transport override: `auto` (default), `true`, or `false`. |
 | `MODEL` | Model id; default to gpt-4o if unset. |
 
-Construct with `ChatOpenAI` from `@langchain/openai`, or `initChatModel("openai:...")` / `createAgent({ model: "openai:..." })`. For non-OpenAI endpoints, set `configuration.baseURL` from `OPENAI_BASE_URL`. That covers vanilla OpenAI, Azure OpenAI (when the endpoint is OpenAI-compatible), and other compatible gateways.
+Construct with `ChatOpenAI` from `@langchain/openai`, or `initChatModel("openai:...")` / `createAgent({ model: "openai:..." })`. For non-OpenAI endpoints, set `configuration.baseURL` from `OPENAI_BASE_URL`. That covers vanilla OpenAI, Azure OpenAI (when the endpoint is OpenAI-compatible), and other compatible gateways. The default `auto` transport sets `useResponsesApi: true` for GPT-5 and o-series reasoning models so function tools and reasoning use `/v1/responses`; other models retain LangChain's normal routing. Gateways without Responses support can set the override to `false`, while `true` forces Responses for any model.
 
 If a dedicated Azure client is used, use `AzureChatOpenAI` and the `AZURE_OPENAI_*` family (`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_BASE_PATH`, and related). That is optional; base URL on `ChatOpenAI` is the minimum for Azure-shaped endpoints.
 
@@ -172,7 +175,7 @@ Documented skills include MCP setup, connection configuration, schema design, na
 
 A local deployment for testing. It should look like a real chat product; it does not need to be production-hardened.
 
-- Run the compiled LangGraph graph from `packages/agent` in-process (LangGraph CLI / Studio is acceptable for developers).
+- Run the compiled LangGraph graph from `packages/agent` (`pnpm langgraph` → `langgraphjs dev --no-browser`). LangGraph CLI / Studio is acceptable for developers; `--no-browser` keeps Studio from auto-opening.
 - User-facing UI in `packages/frontend`: [LangChain frontend integrations](https://docs.langchain.com/oss/javascript/langchain/frontend/integrations/overview) on top of `useStream`. **v0 choice:** [AI Elements](https://docs.langchain.com/oss/javascript/langchain/frontend/integrations/overview) (shadcn `Conversation`, `Message`, `Tool`, `Reasoning`) wired to `stream.messages`. That surfaces MCP tool calls without a custom runtime. CopilotKit, assistant-ui, or OpenUI remain compatible if the local UI is swapped later.
 - Local env file (not committed): single root `.env` (copied from `.env.example`), automatically loaded by `packages/agent/src/env.ts` (with optional package-level `.env` overrides). Contains Atlas `ORG_ID` / `PUBLIC_API_KEY` / `PRIVATE_API_KEY` and LLM provider credentials.
 

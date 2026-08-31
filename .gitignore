@@ -4,3 +4,5 @@ dist/
 .env.*
 !.env.example
 .pnpm-store/
+.langgraph_api/
+.mcp-credentials.json
