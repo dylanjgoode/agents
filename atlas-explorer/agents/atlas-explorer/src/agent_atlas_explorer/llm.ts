@@ -20,6 +20,25 @@ export interface BuildLLMOptions {
   temperature?: number;
 }
 
+export function resolveOpenAIResponsesApi(
+  model: string,
+  env: { OPENAI_USE_RESPONSES_API?: string } = process.env,
+): boolean | undefined {
+  const configured = env.OPENAI_USE_RESPONSES_API?.trim().toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+  if (configured && configured !== "auto") {
+    throw new Error(
+      "OPENAI_USE_RESPONSES_API must be 'auto', 'true', or 'false'",
+    );
+  }
+
+  const isReasoningModel =
+    /^o\d/.test(model) ||
+    (model.startsWith("gpt-5") && !model.startsWith("gpt-5-chat"));
+  return isReasoningModel ? true : undefined;
+}
+
 export function buildLLM(opts: BuildLLMOptions = {}): BaseChatModel {
   const configuredProvider = (opts.provider ?? "").trim().toLowerCase();
   const model = opts.model ?? null;
@@ -44,11 +63,13 @@ export function buildLLM(opts: BuildLLMOptions = {}): BaseChatModel {
 
   const buildOpenAI = (): BaseChatModel => {
     const modelName = model ?? "gpt-4o-mini";
+    const useResponsesApi = resolveOpenAIResponsesApi(modelName);
     log(`Using OpenAI LLM: ${modelName}`);
     const config: ConstructorParameters<typeof ChatOpenAI>[0] = {
       apiKey: openaiKey,
       model: modelName,
       temperature,
+      ...(useResponsesApi !== undefined ? { useResponsesApi } : {}),
     };
     if (openaiBaseUrl) {
       const headers: Record<string, string> = {};

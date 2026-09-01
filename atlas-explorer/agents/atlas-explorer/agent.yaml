@@ -1,5 +1,4 @@
 # Human-readable app slug used by Agentic Platform tooling.
-# `agentic create` should rewrite this when generating a new app from the template.
 name: atlas-explorer
 # Node entry point for the Magenta SDK App instance.
 # Format: <module path>:<export name>. This template exposes `app` from
@@ -10,15 +9,11 @@ framework: langgraph
 language: typescript
 # Optional LLM hints. Application code still constructs the provider client and
 # reads the matching API key from .env. Supported: anthropic, gemini, openai, cerebras.
-# `agentic create` rewrites provider/model to match your --llm choice.
 config:
     provider: openai
     model: gpt-5.4-mini
-# Runtime feature flags controlled by agent.yaml, not .env.
-#   memory:     long-term memory (semantic/episodic/taxonomic). VOYAGE_API_KEY must be in .env.
-#               `agentic create --memory` enables this and prompts for the Voyage key.
-#   deep_agent: registers the Tool Pod's built-in filesystem + shell handlers that
-#               deep agents rely on. Required for App.deepAgent().
+# deep_agent registers the Tool Pod filesystem/shell handlers used by
+# App.deepAgent(). Long-term memory is not part of the source Atlas agent.
 features:
     memory: false
     deep_agent: true
@@ -26,14 +21,54 @@ features:
 # (e.g. OPENAI_API_KEY), never secret values - values go in .env locally, or
 # in the platform secret store (`agentic secret set`) for deployed agents.
 # MONGODB_URI is injected into every workload and need not be listed.
-# VOYAGE_API_KEY is a project secret you set once (`agentic secret set
-# VOYAGE_API_KEY`) when features.memory is true - it is not listed here either.
 # invoke_llm is a reserved tool name: the platform runs model calls in a tool
 # pod, so the LLM provider key must also be declared under tools.invoke_llm.
 required_secrets:
     aer:
         - OPENAI_API_KEY
+        - ATLAS_ORG_ID
+        - ATLAS_PUBLIC_API_KEY
+        - ATLAS_PRIVATE_API_KEY
     tools:
         invoke_llm:
             - OPENAI_API_KEY
+        "mongodb__*":
+            - ATLAS_ORG_ID
+            - ATLAS_PUBLIC_API_KEY
+            - ATLAS_PRIVATE_API_KEY
+# Both runtime processes bootstrap an MCP identity, so each needs Atlas Admin
+# API and public-IPv4 discovery egress. LLM and MCP calls execute in Tool Pods.
+network:
+    egress:
+        - fqdn: cloud.mongodb.com
+          ports: [443]
+          component: all
+        - fqdn: api4.ipify.org
+          ports: [443]
+          component: all
+        - fqdn: ifconfig.me
+          ports: [443]
+          component: all
+        - fqdn: icanhazip.com
+          ports: [443]
+          component: all
+        - fqdn: mcp.mongodb.com
+          ports: [443]
+          component: tool
+        - fqdn: api.openai.com
+          ports: [443]
+          component: tool
+# The startup bootstrap creates these client credentials in process memory
+# before the App reads this configuration.
+mcp:
+    servers:
+        mongodb:
+            transport: streamable_http
+            url: https://mcp.mongodb.com
+            auth:
+                type: client_credentials
+                token_url: https://cloud.mongodb.com/api/oauth/token
+                client_id_env: ATLAS_MCP_CLIENT_ID
+                client_secret_env: ATLAS_MCP_CLIENT_SECRET
+            timeout_seconds: 30
 version: 0.1.0

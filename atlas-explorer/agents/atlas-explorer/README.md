@@ -1,75 +1,125 @@
-# Insurance Agent Template (TypeScript)
+# Atlas Explorer (Magenta TypeScript)
 
-A full-featured Magenta SDK agent created from the Insurance Agent (TypeScript)
-template. It demonstrates two platform capabilities together:
+Atlas Explorer is a MongoDB and Atlas operations agent running on the Magenta
+Agentic Platform. It combines Magenta's audited deep-agent runtime with Atlas
+Managed MCP tools and the MongoDB Agent Skills bundle.
 
-**Features:** Memory (wired, off by default) · Deep agent · Subagents · Human-in-the-loop (suspend/resume)
-
-- **Deep agent** — the graph is a deepagents orchestrator (`app.deepAgent`) with
-  built-in planning (todo list), a sandboxed Tool-Pod filesystem/shell, and
-  **subagent delegation**. A `claims-risk-analyst` subagent handles claim risk
-  assessment. Requires `features.deep_agent: true`.
-- **Long-term memory** — tools read and write the Memory Server through
-  `app.memory` (semantic customer facts, episodic conversation summaries,
-  taxonomic knowledge base). Identity (user/session) is resolved from the ambient
-  execution context, so memory **persists across turns and sessions** for the
-  same user. Requires `features.memory: true` and `VOYAGE_API_KEY` — off by
-  default; scaffold with `agentic create --memory` (or flip the flag in
-  `agent.yaml`) to enable it.
+**Features:** Deep-agent planning · Atlas Managed MCP · MongoDB skills ·
+platform checkpoints · human approval for destructive operations
 
 ## Layout
 
 ```
 atlas-explorer/agents/atlas-explorer/
-├── agent.yaml                         # slug, entrypoint, features (memory + deep_agent), secrets
+├── agent.yaml                         # app, MCP, features, and required secret names
 ├── package.json / tsconfig.json       # TypeScript build
-├── dev.yaml                           # local `agentic dev` service ports
+├── pnpm-workspace.yaml / pnpm-lock.yaml
+├── dev.yaml                           # local Agentic service ports
 ├── env.example                        # copy to .env
+├── skills/                            # vendored MongoDB Agent Skills
 └── src/agent_atlas_explorer/
-    ├── main.ts                        # App + app.deepAgent(...) with the risk-analyst subagent
-    ├── tools.ts                       # policy/claim tools + memory tools
-    ├── policyStore.ts                 # MongoDB-backed policy & claim stores
-    ├── riskAnalysis.ts                # pure claim risk-scoring logic
-    ├── systemMessage.ts               # agent system prompt
-    └── llm.ts                         # provider selection (anthropic/openai/gemini/cerebras)
+    ├── main.ts                        # startup bootstrap + Magenta deep agent
+    ├── agentBackend.ts                # audited filesystem without model shell access
+    ├── agentPolicy.ts                 # tool filtering and destructive-tool policy
+    ├── toolErrors.ts                  # recoverable MCP error handling
+    ├── systemMessage.ts               # Atlas Explorer instructions
+    ├── llm.ts                         # provider selection
+    └── mcp/
+        ├── bootstrap.ts               # Atlas Admin API identity creation
+        └── startup.ts                 # process-local credential injection
 ```
 
 ## Configure
 
-`agentic create` already generated `.env` with your selected provider key (and
-`VOYAGE_API_KEY` when memory is enabled) — do not copy `env.example` over it.
-Review `.env` and `agent.yaml` to customize the model, provider settings, or
-`MONGODB_URI`.
+Requires Node.js 24 or newer.
+
+```bash
+cp env.example .env
+pnpm install
+```
+
+Set these local secrets in `.env`:
+
+- `ATLAS_ORG_ID`
+- `ATLAS_PUBLIC_API_KEY`
+- `ATLAS_PRIVATE_API_KEY`
+- the API key matching `config.provider` in `agent.yaml`
+
+Use Atlas programmatic API credentials authorized to create organization MCP
+configurations. Do not set `ATLAS_MCP_CLIENT_ID` or
+`ATLAS_MCP_CLIENT_SECRET`; startup generates them in memory.
+
+For a deployed workspace, store the same values in Magenta's secret store:
+
+```bash
+agentic secret set ATLAS_ORG_ID
+agentic secret set ATLAS_PUBLIC_API_KEY
+agentic secret set ATLAS_PRIVATE_API_KEY
+agentic secret set OPENAI_API_KEY
+```
+
+When `agent.yaml` selects Anthropic, Gemini, Cerebras, or a custom-compatible
+endpoint, update both provider-key entries under `required_secrets` and the
+Tool Pod destination under `network.egress`. The checked-in manifest permits
+the default OpenAI endpoint plus the Atlas, Managed MCP, and public-IPv4 hosts
+needed during per-process bootstrap.
+
+## MCP startup lifecycle
+
+Each AER and Tool Pod process:
+
+1. Resolves its public IPv4 address.
+2. Creates a uniquely named Atlas organization MCP configuration with the
+   `ORG_OWNER` role and that address in its access list.
+3. Creates the configuration's one-time client secret.
+4. Places the generated client ID and secret only in process memory.
+5. Constructs the Magenta `App`, which discovers MCP tools from `agent.yaml`
+   and obtains short-lived OAuth access tokens.
+
+The generated service-account secret expires after one year. A new process
+creates a new MCP configuration; stopped or crashed processes cannot delete
+their remote configuration automatically. Operators should periodically remove
+expired `atlas-explorer-*` configurations that are no longer in use.
 
 ## Run locally
 
 ```bash
-agentic dev up          # brings up OE + AER + Tool Pod + memory-server + MongoDB
+pnpm test
+pnpm typecheck
+pnpm build
+agentic dev up
 ```
 
-Then open the playground (http://localhost:3000) and talk to the agent.
+Open the playground at http://localhost:3000. Stop the stack with
+`agentic dev stop`.
 
 ## What to try
 
-- **Memory across sessions:** In one session tell the agent your name and that
-  you have a *clean driving record, no accidents*. Start a **new session as the
-  same user** and ask for a quote — it recalls you as a returning customer and
-  applies the loyalty + good-driver discounts.
-- **Deep-agent delegation:** File a high-value claim (e.g. $15,000 collision).
-  The agent files it, delegates to the `claims-risk-analyst` subagent for
-  assessment, and — on a high/medium result — calls `human_review`, which
-  **suspends** the graph until you resume it with a decision.
+- Ask it to list databases or inspect a collection schema. Read-only MCP tools
+  run without approval.
+- Ask it to diagnose a query or propose an index. The agent can load the
+  relevant MongoDB skill on demand.
+- Ask it to drop a collection. The graph suspends before the MCP call and
+  resumes only after an approve/edit/reject/respond decision.
 
-## Notes
+## Safety and runtime notes
 
-- The `@magenta/*` SDK dependencies are pinned to a specific
-  `magenta-client-libraries` commit that contains the TypeScript memory support
-  (AP-1971). Against an older published/checked-out SDK the memory tools will not
-  resolve; bump the pinned commit in `package.json` / `pnpm-workspace.yaml` to
-  pick up newer SDK changes.
-- App-bound memory only works while handling a platform request (it needs the
-  execution context's OE URL). It is not reachable from a plain script — use the
-  HTTP-direct `Memory` client from `@magenta/agentic-platform-memory-ts` for that.
-- The taxonomic knowledge base (`explain_insurance_term`, `get_coverage_options`)
-  returns results only once terms have been seeded; `get_coverage_options` falls
-  back to built-in descriptions when the knowledge base is empty.
+- Every mutative database tool—`insert-many`, `create-index`, `drop-index`,
+  `update-one`, `update-many`, `rename-collection`, `create-collection`,
+  `delete-many`, `drop-collection`, and `drop-database`—plus Atlas Streams
+  lifecycle management and teardown is protected by LangChain HITL middleware
+  using Magenta's persistent checkpointer and suspend/resume adapter.
+- `aggregate` remains available for read-only exploration; the agent is
+  explicitly forbidden from using `$out` or `$merge` write stages because HITL
+  is applied at tool granularity.
+- Deep-agent file operations stay on Magenta's audited Tool Pod backend, but
+  the model is not given general-purpose shell execution that could read
+  process credential files outside the filesystem sandbox.
+- MCP validation and query errors are returned to the model so it can correct
+  arguments and retry. Graph interrupts are always rethrown.
+- `atlas-local-*` tools are hidden because they cannot run against Managed MCP.
+- The Magenta SDK dependencies are pinned to one tested commit in both
+  `package.json` and `pnpm-workspace.yaml`.
+- Zod is pinned to `4.4.3`; newer `4.5.x` releases currently break Magenta's
+  content-block discriminator while messages cross the AER/Tool Pod boundary.
+- Do not edit `.agentic/`; it is generated by the Agentic CLI.
