@@ -134,10 +134,19 @@ describe("Atlas Explorer graph assembly", () => {
         mongodb__update_many: true,
         mongodb__rename_collection: true,
         mongodb__create_collection: true,
+        mongodb__atlas_create_free_cluster: true,
+        mongodb__atlas_create_cluster: true,
+        mongodb__atlas_load_sample_dataset: true,
+        mongodb__atlas_create_access_list: true,
+        mongodb__atlas_create_db_user: true,
+        mongodb__atlas_create_project: true,
+        mongodb__atlas_upgrade_cluster: true,
+        mongodb__atlas_pause_resume_cluster: true,
+        mongodb__atlas_streams_build: true,
         mongodb__atlas_streams_manage: true,
         mongodb__atlas_streams_teardown: true,
       },
-      descriptionPrefix: "MongoDB operation pending approval",
+      descriptionPrefix: "MongoDB or Atlas operation pending approval",
     });
     const backend = (
       harness.deepAgent.mock.calls[0]?.[1] as {

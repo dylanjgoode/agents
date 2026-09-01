@@ -42,8 +42,8 @@ export const buildAgent = app.entrypoint(() => {
   );
   const saver = app.checkpointer();
   const mutativeToolReview = humanInTheLoopMiddleware({
-        interruptOn: MUTATIVE_MCP_INTERRUPT_ON,
-    descriptionPrefix: "MongoDB operation pending approval",
+    interruptOn: MUTATIVE_MCP_INTERRUPT_ON,
+    descriptionPrefix: "MongoDB or Atlas operation pending approval",
   });
 
   return app.deepAgent(

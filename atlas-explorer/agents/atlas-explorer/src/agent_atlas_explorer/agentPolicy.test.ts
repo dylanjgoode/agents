@@ -6,7 +6,7 @@ import {
 } from "./agentPolicy.js";
 
 describe("Atlas tool policy", () => {
-  it("requires human approval for every mutative MongoDB MCP tool", () => {
+  it("requires human approval for every persistent MongoDB and Atlas mutation", () => {
     expect(MUTATIVE_MCP_INTERRUPT_ON).toEqual({
       mongodb__drop_database: true,
       mongodb__drop_collection: true,
@@ -18,6 +18,15 @@ describe("Atlas tool policy", () => {
       mongodb__update_many: true,
       mongodb__rename_collection: true,
       mongodb__create_collection: true,
+      mongodb__atlas_create_free_cluster: true,
+      mongodb__atlas_create_cluster: true,
+      mongodb__atlas_load_sample_dataset: true,
+      mongodb__atlas_create_access_list: true,
+      mongodb__atlas_create_db_user: true,
+      mongodb__atlas_create_project: true,
+      mongodb__atlas_upgrade_cluster: true,
+      mongodb__atlas_pause_resume_cluster: true,
+      mongodb__atlas_streams_build: true,
       mongodb__atlas_streams_manage: true,
       mongodb__atlas_streams_teardown: true,
     });

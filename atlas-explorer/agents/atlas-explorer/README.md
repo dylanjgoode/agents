@@ -5,7 +5,7 @@ Agentic Platform. It combines Magenta's audited deep-agent runtime with Atlas
 Managed MCP tools and the MongoDB Agent Skills bundle.
 
 **Features:** Deep-agent planning · Atlas Managed MCP · MongoDB skills ·
-platform checkpoints · human approval for destructive operations
+platform checkpoints · runtime approval for persistent mutations
 
 ## Layout
 
@@ -105,11 +105,11 @@ Open the playground at http://localhost:3000. Stop the stack with
 
 ## Safety and runtime notes
 
-- Every mutative database tool—`insert-many`, `create-index`, `drop-index`,
-  `update-one`, `update-many`, `rename-collection`, `create-collection`,
-  `delete-many`, `drop-collection`, and `drop-database`—plus Atlas Streams
-  lifecycle management and teardown is protected by LangChain HITL middleware
-  using Magenta's persistent checkpointer and suspend/resume adapter.
+- Every persistent mutation is protected by LangChain HITL middleware using
+  Magenta's persistent checkpointer and suspend/resume adapter. This includes
+  database writes; Atlas cluster creation, upgrades, and pause/resume; sample
+  dataset loads; project, database-user, and access-list creation; and Atlas
+  Streams build, management, and teardown operations.
 - `aggregate` remains available for read-only exploration; the agent is
   explicitly forbidden from using `$out` or `$merge` write stages because HITL
   is applied at tool granularity.

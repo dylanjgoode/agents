@@ -60,4 +60,44 @@ describe("MongoDB skills bundle", () => {
     expect(allSkillMarkdown).toContain("mongodb__atlas_streams_teardown");
     expect(allSkillMarkdown).toContain("ATLAS_PRIVATE_API_KEY");
   });
+
+  it("routes every mutative Atlas Streams tool through runtime approval", () => {
+    const streamsSkillRoot = path.join(
+      skillsRoot,
+      "mongodb-atlas-stream-processing",
+    );
+    const skillContent = fs.readFileSync(
+      path.join(streamsSkillRoot, "SKILL.md"),
+      "utf8",
+    );
+    const troubleshootingContent = fs.readFileSync(
+      path.join(streamsSkillRoot, "references", "mcp-troubleshooting.md"),
+      "utf8",
+    );
+    const workflowContent = fs.readFileSync(
+      path.join(streamsSkillRoot, "references", "development-workflow.md"),
+      "utf8",
+    );
+
+    expect(skillContent).toContain(
+      "`mongodb__atlas_streams_build`, `mongodb__atlas_streams_manage`, and `mongodb__atlas_streams_teardown` are protected by Magenta's runtime approval interrupt",
+    );
+    expect(skillContent).toContain(
+      "call the mutative tool directly and let runtime approval suspend it",
+    );
+    expect(skillContent).not.toContain(
+      "Wait for confirmation before calling `mongodb__atlas_streams_teardown`",
+    );
+    expect(skillContent).not.toContain("before requesting confirmation");
+    expect(troubleshootingContent).toContain(
+      "The build, manage, and teardown tools remain subject to Magenta's runtime approval interrupt.",
+    );
+    expect(workflowContent).toContain(
+      "Call `mongodb__atlas_streams_build` directly after the validation summary.",
+    );
+    expect(workflowContent).not.toContain("Wait for user confirmation");
+    expect(workflowContent).not.toContain(
+      "ask the user to confirm before proceeding",
+    );
+  });
 });
