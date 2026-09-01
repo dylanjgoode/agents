@@ -1,0 +1,21 @@
+overrides:
+  "zod": "4.4.3"
+  "@magenta/sdk-core-ts": "git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/sdk-core-ts"
+  "@magenta/agentic-platform-memory-ts": "git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/agentic-platform-memory-ts"
+  "@magenta/runner-shared-ts": "git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/runner-shared-ts"
+  "@magenta/magenta-sdklanggraph-ts": "git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/magenta-sdklanggraph-ts"
+
+allowBuilds:
+  # pnpm evaluates git dependencies under both authored and canonicalized URLs
+  # while preparing the selected package and its internal Magenta dependencies.
+  "@magenta/sdk-core-ts@git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/sdk-core-ts": true
+  "@magenta/agentic-platform-memory-ts@git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/agentic-platform-memory-ts": true
+  "@magenta/runner-shared-ts@git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/runner-shared-ts": true
+  "@magenta/magenta-sdklanggraph-ts@git+https://github.com/10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/magenta-sdklanggraph-ts": true
+  "@magenta/sdk-core-ts@git+https://git@github.com:10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/sdk-core-ts": true
+  "@magenta/agentic-platform-memory-ts@git+https://git@github.com:10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/agentic-platform-memory-ts": true
+  "@magenta/runner-shared-ts@git+https://git@github.com:10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/runner-shared-ts": true
+  "@magenta/magenta-sdklanggraph-ts@git+https://git@github.com:10gen/magenta-client-libraries.git#8780ea124e6be996ef7b96885f14588195b98d96&path:packages/magenta-sdklanggraph-ts": true
+  esbuild: true
+
+blockExoticSubdeps: false
