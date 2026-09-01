@@ -115,7 +115,10 @@ describe("Atlas Explorer graph assembly", () => {
         tools: [harness.tools[0]],
         skills: ["skills"],
         checkpointer: harness.checkpointer,
-        middleware: expect.arrayContaining([harness.hitlMiddleware]),
+        middleware: expect.arrayContaining([
+          expect.objectContaining({ name: "stripOpenAIToolEcho" }),
+          harness.hitlMiddleware,
+        ]),
       }),
     );
     expect(harness.deepAgent.mock.calls[0]?.[1]).not.toHaveProperty("subagents");

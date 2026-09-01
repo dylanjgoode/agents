@@ -21,6 +21,7 @@ atlas-explorer/agents/atlas-explorer/
     ├── main.ts                        # startup bootstrap + Magenta deep agent
     ├── agentBackend.ts                # audited filesystem without model shell access
     ├── agentPolicy.ts                 # tool filtering and destructive-tool policy
+    ├── modelResponse.ts               # removes repeated OpenAI tool metadata
     ├── toolErrors.ts                  # recoverable MCP error handling
     ├── systemMessage.ts               # Atlas Explorer instructions
     ├── llm.ts                         # provider selection
@@ -117,6 +118,9 @@ Open the playground at http://localhost:3000. Stop the stack with
   process credential files outside the filesystem sandbox.
 - MCP validation and query errors are returned to the model so it can correct
   arguments and retry. Graph interrupts are always rethrown.
+- OpenAI Responses tool definitions echoed in `response_metadata` are removed
+  from prior messages before model calls and from new responses before
+  checkpointing, keeping durable sessions compact.
 - `atlas-local-*` tools are hidden because they cannot run against Managed MCP.
 - The Magenta SDK dependencies are pinned to one tested commit in both
   `package.json` and `pnpm-workspace.yaml`.

@@ -11,6 +11,7 @@ import {
 } from "./agentPolicy.js";
 import { buildLLM } from "./llm.js";
 import { prepareAtlasMcpEnvironment } from "./mcp/startup.js";
+import { stripToolEchoMiddleware } from "./modelResponse.js";
 import { SYSTEM_PROMPT } from "./systemMessage.js";
 import { recoverToolErrorsMiddleware } from "./toolErrors.js";
 
@@ -58,7 +59,8 @@ export const buildAgent = app.entrypoint(() => {
       backend: withoutShellExecution(new MagentaToolPodBackend()) as never,
       checkpointer: (saver ?? false) as never,
       middleware: [
-      mutativeToolReview,
+        stripToolEchoMiddleware,
+        mutativeToolReview,
         recoverToolErrorsMiddleware,
       ] as never,
     },
