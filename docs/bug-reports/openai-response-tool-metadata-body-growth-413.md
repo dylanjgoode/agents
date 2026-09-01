@@ -2,6 +2,9 @@
 
 ## Summary
 
+**Status: confirmed high-priority local runtime defect; Atlas Explorer has an
+application-level mitigation.**
+
 In the local Magenta Atlas Explorer, OpenAI Responses returned the complete
 bound tool catalog in every `AIMessage.response_metadata.tools`. LangGraph
 checkpointed each redundant copy, and later model calls resent those copies as

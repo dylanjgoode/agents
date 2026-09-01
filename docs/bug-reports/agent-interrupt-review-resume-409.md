@@ -2,6 +2,8 @@
 
 ## Summary
 
+**Status: confirmed high-priority local playground/OE integration defect.**
+
 The local playground correctly detects a LangGraph human-in-the-loop
 interrupt and lists the execution under **Review Requests**, but submitting
 an Approve, Edit, or Reject decision fails with HTTP 409.
