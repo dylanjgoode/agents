@@ -47,8 +47,7 @@ vi.mock("@magenta/magenta-sdklanggraph-ts", () => ({
   App: class {
     constructor(options: { appName: string }) {
       harness.startupEvents.push("app");
-      harness.agentWorkdirAtAppConstruction =
-        process.env.AGENTIC_AGENT_WORKDIR;
+      harness.agentWorkdirAtAppConstruction = process.env.AGENTIC_AGENT_WORKDIR;
       harness.appName = options.appName;
     }
 
@@ -112,7 +111,6 @@ describe("Atlas Explorer graph assembly", () => {
     expect(harness.buildLLM).toHaveBeenCalledWith({
       provider: "openai",
       model: "gpt-5.6-luna",
-      temperature: 0,
     });
     expect(harness.deepAgent).toHaveBeenCalledWith(
       harness.model,
@@ -126,7 +124,9 @@ describe("Atlas Explorer graph assembly", () => {
         ]),
       }),
     );
-    expect(harness.deepAgent.mock.calls[0]?.[1]).not.toHaveProperty("subagents");
+    expect(harness.deepAgent.mock.calls[0]?.[1]).not.toHaveProperty(
+      "subagents",
+    );
     expect(harness.hitlConfig).toEqual({
       interruptOn: {
         mongodb__drop_database: true,

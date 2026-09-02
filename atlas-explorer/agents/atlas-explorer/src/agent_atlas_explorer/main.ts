@@ -45,7 +45,7 @@ export const buildAgent = app.entrypoint(() => {
     buildLLM({
       provider: "openai",
       model: "gpt-5.6-luna",
-    }) as never,
+    }),
     {
       tools: allTools as never,
       systemPrompt: SYSTEM_PROMPT,

@@ -42,7 +42,7 @@ export function resolveOpenAIResponsesApi(
 export function buildLLM(opts: BuildLLMOptions = {}): BaseChatModel {
   const configuredProvider = (opts.provider ?? "").trim().toLowerCase();
   const model = opts.model ?? null;
-  const temperature = opts.temperature ?? 0;
+  const temperature = opts.temperature;
 
   const geminiKey = process.env.GEMINI_API_KEY ?? "";
   const openaiKey = process.env.OPENAI_API_KEY ?? "";
@@ -88,7 +88,9 @@ export function buildLLM(opts: BuildLLMOptions = {}): BaseChatModel {
       config.configuration = {
         baseURL,
         defaultHeaders: Object.keys(headers).length ? headers : undefined,
-        defaultQuery: Object.keys(defaultQuery).length ? defaultQuery : undefined,
+        defaultQuery: Object.keys(defaultQuery).length
+          ? defaultQuery
+          : undefined,
       };
     }
     return new ChatOpenAI(config);
