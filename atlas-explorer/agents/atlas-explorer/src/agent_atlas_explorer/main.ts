@@ -5,10 +5,7 @@ import "dotenv/config";
 import { humanInTheLoopMiddleware } from "langchain";
 
 import { withoutShellExecution } from "./agentBackend.js";
-import {
-  MUTATIVE_MCP_INTERRUPT_ON,
-  selectAtlasTools,
-} from "./agentPolicy.js";
+import { MUTATIVE_MCP_INTERRUPT_ON, selectAtlasTools } from "./agentPolicy.js";
 import { buildLLM } from "./llm.js";
 import { prepareAtlasMcpEnvironment } from "./mcp/startup.js";
 import { stripToolEchoMiddleware } from "./modelResponse.js";
@@ -24,9 +21,8 @@ function log(level: "INFO" | "WARN" | "ERROR", msg: string): void {
 // load. Establish the source root first so bundled skills remain readable
 // through the audited filesystem tools in local and deployed runtimes.
 process.env.AGENTIC_AGENT_WORKDIR ||= process.cwd();
-const { App, MagentaToolPodBackend } = await import(
-  "@magenta/magenta-sdklanggraph-ts"
-);
+const { App, MagentaToolPodBackend } =
+  await import("@magenta/magenta-sdklanggraph-ts");
 
 await prepareAtlasMcpEnvironment();
 
@@ -35,7 +31,6 @@ log("INFO", "App created; Atlas MCP tools will be discovered from agent.yaml");
 
 export const buildAgent = app.entrypoint(() => {
   log("INFO", "Building atlas-explorer deep agent");
-  const llmConfig = app.llmConfig;
 
   const allTools = selectAtlasTools(
     app.getTools() as readonly { name: string }[],
@@ -48,9 +43,8 @@ export const buildAgent = app.entrypoint(() => {
 
   return app.deepAgent(
     buildLLM({
-      provider: llmConfig?.provider,
-      model: llmConfig?.model,
-      temperature: 0,
+      provider: "openai",
+      model: "gpt-5.6-luna",
     }) as never,
     {
       tools: allTools as never,

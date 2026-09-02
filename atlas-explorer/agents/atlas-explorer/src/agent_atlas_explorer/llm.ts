@@ -136,7 +136,7 @@ export function buildLLM(opts: BuildLLMOptions = {}): BaseChatModel {
   if (configuredProvider) {
     if (!(configuredProvider in builders)) {
       throw new Error(
-        "Unsupported config.provider in agent.yaml. Use one of: anthropic, cerebras, gemini, openai.",
+        "Unsupported LLM provider. Use one of: anthropic, cerebras, gemini, openai.",
       );
     }
     const [providerKey, providerBuilder] = builders[configuredProvider]!;
@@ -144,7 +144,7 @@ export function buildLLM(opts: BuildLLMOptions = {}): BaseChatModel {
       return providerBuilder();
     }
     throw new Error(
-      `agent.yaml config.provider is set to "${configuredProvider}", but the matching API key is missing from .env.`,
+      `LLM provider "${configuredProvider}" is configured, but its API key is missing.`,
     );
   }
 

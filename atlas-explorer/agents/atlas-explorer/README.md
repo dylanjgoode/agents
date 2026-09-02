@@ -44,7 +44,7 @@ Set these local secrets in `.env`:
 - `ATLAS_ORG_ID`
 - `ATLAS_PUBLIC_API_KEY`
 - `ATLAS_PRIVATE_API_KEY`
-- the API key matching `config.provider` in `agent.yaml`
+- `OPENAI_API_KEY`
 
 Use Atlas programmatic API credentials authorized to create organization MCP
 configurations. Do not set `ATLAS_MCP_CLIENT_ID` or
@@ -59,11 +59,12 @@ agentic secret set ATLAS_PRIVATE_API_KEY
 agentic secret set OPENAI_API_KEY
 ```
 
-When `agent.yaml` selects Anthropic, Gemini, Cerebras, or a custom-compatible
-endpoint, update both provider-key entries under `required_secrets` and the
-Tool Pod destination under `network.egress`. The checked-in manifest permits
-the default OpenAI endpoint plus the Atlas, Managed MCP, and public-IPv4 hosts
-needed during per-process bootstrap.
+The application selects OpenAI `gpt-5.6-luna` in `main.ts`. To use another
+provider, model, or custom-compatible endpoint, update that code together with
+the provider-key entries under `required_secrets` and the Tool Pod destination
+under `network.egress`. The checked-in manifest permits the default OpenAI
+endpoint plus the Atlas, Managed MCP, and public-IPv4 hosts needed during
+per-process bootstrap.
 
 ## MCP startup lifecycle
 

@@ -7,11 +7,6 @@ entrypoint: agent_atlas_explorer.main:app
 framework: langgraph
 # Programming language for this agent.
 language: typescript
-# Optional LLM hints. Application code still constructs the provider client and
-# reads the matching API key from .env. Supported: anthropic, gemini, openai, cerebras.
-config:
-    provider: openai
-    model: gpt-5.4-mini
 # deep_agent registers the Tool Pod filesystem/shell handlers used by
 # App.deepAgent(). Long-term memory is not part of the source Atlas agent.
 features:

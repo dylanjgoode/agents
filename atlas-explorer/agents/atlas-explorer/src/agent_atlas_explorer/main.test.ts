@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => {
     agentWorkdirAtAppConstruction: undefined as string | undefined,
     appName: undefined as string | undefined,
     builder: undefined as (() => unknown) | undefined,
+    buildLLM: vi.fn((_options: unknown) => model),
     deepAgent: vi.fn((_model: unknown, _options: unknown) => graph),
     run: vi.fn(),
   };
@@ -44,8 +45,6 @@ vi.mock("@magenta/magenta-sdklanggraph-ts", () => ({
     execute(): void {}
   },
   App: class {
-    readonly llmConfig = { provider: "openai", model: "gpt-test" };
-
     constructor(options: { appName: string }) {
       harness.startupEvents.push("app");
       harness.agentWorkdirAtAppConstruction =
@@ -81,7 +80,7 @@ vi.mock("@magenta/magenta-sdklanggraph-ts", () => ({
 }));
 
 vi.mock("./llm.js", () => ({
-  buildLLM: vi.fn(() => harness.model),
+  buildLLM: harness.buildLLM,
 }));
 
 vi.mock("./mcp/startup.js", () => ({
@@ -92,6 +91,7 @@ vi.mock("./mcp/startup.js", () => ({
 
 describe("Atlas Explorer graph assembly", () => {
   beforeEach(() => {
+    harness.buildLLM.mockClear();
     harness.deepAgent.mockClear();
   });
 
@@ -109,6 +109,11 @@ describe("Atlas Explorer graph assembly", () => {
 
     harness.builder!();
 
+    expect(harness.buildLLM).toHaveBeenCalledWith({
+      provider: "openai",
+      model: "gpt-5.6-luna",
+      temperature: 0,
+    });
     expect(harness.deepAgent).toHaveBeenCalledWith(
       harness.model,
       expect.objectContaining({
