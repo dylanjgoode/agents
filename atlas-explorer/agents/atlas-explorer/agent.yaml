@@ -32,7 +32,8 @@ required_secrets:
             - ATLAS_PUBLIC_API_KEY
             - ATLAS_PRIVATE_API_KEY
 # Both runtime processes bootstrap an MCP identity, so each needs Atlas Admin
-# API and public-IPv4 discovery egress. LLM and MCP calls execute in Tool Pods.
+# API and public-IPv4 discovery egress. AER also discovers remote MCP tools at
+# startup; actual LLM and MCP tool calls execute in Tool Pods.
 network:
     egress:
         - fqdn: cloud.mongodb.com
@@ -49,7 +50,7 @@ network:
           component: all
         - fqdn: mcp.mongodb.com
           ports: [443]
-          component: tool
+          component: all
         - fqdn: api.openai.com
           ports: [443]
           component: tool

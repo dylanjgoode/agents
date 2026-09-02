@@ -64,7 +64,7 @@ provider, model, or custom-compatible endpoint, update that code together with
 the provider-key entries under `required_secrets` and the Tool Pod destination
 under `network.egress`. The checked-in manifest permits the default OpenAI
 endpoint plus the Atlas, Managed MCP, and public-IPv4 hosts needed during
-per-process bootstrap.
+per-process bootstrap and AER startup discovery.
 
 ## MCP startup lifecycle
 
@@ -75,8 +75,9 @@ Each AER and Tool Pod process:
    `ORG_OWNER` role and that address in its access list.
 3. Creates the configuration's one-time client secret.
 4. Places the generated client ID and secret only in process memory.
-5. Constructs the Magenta `App`, which discovers MCP tools from `agent.yaml`
-   and obtains short-lived OAuth access tokens.
+5. Constructs the Magenta `App`; AER discovers MCP tools from `agent.yaml`,
+   while Tool Pods execute subsequent MCP calls. Both components therefore
+   require Managed MCP endpoint egress.
 
 The generated service-account secret expires after one year. A new process
 creates a new MCP configuration; stopped or crashed processes cannot delete
