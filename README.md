@@ -1,25 +1,17 @@
-# mongodb-agent-template
+# MongoDB Agentic Platform Agent Templates
 
-TypeScript template for a MongoDB Data Explorer agent. pnpm workspace.
+Templates for MongoDB Agentic Platform agents.
 
-- [`packages/agent`](packages/agent) — Deep Agents / LangGraph graph (`@mongodb-agent-template/agent`); local LangGraph API via `pnpm langgraph`
-- [`packages/frontend`](packages/frontend) — local chat UI (`@mongodb-agent-template/frontend`)
+This repository contains reusable starting points for building agents that work
+with MongoDB and MongoDB Atlas. Each template is self-contained and includes its
+own setup and deployment instructions.
 
-The frontend streams the agent graph; the packages share no code. See [`docs/tech-design.md`](docs/tech-design.md).
+## Templates
+
+- [Atlas Explorer](atlas-explorer/agents/atlas-explorer) — An operations agent
+  for exploring MongoDB data and managing Atlas resources.
 
 ## Getting Started
 
-1. Copy `.env.example` to `.env` at the root and fill in your Atlas and LLM credentials:
-   ```bash
-   cp .env.example .env
-   ```
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-3. Start the local LangGraph API at `http://localhost:2024`:
-   ```bash
-   pnpm langgraph
-   ```
-
-   This starts `langgraphjs dev --no-browser`; it does not open or require the hosted LangSmith Studio frontend. A fully local web UI requires implementing the placeholder [`packages/frontend`](packages/frontend) package.
+Choose a template and follow its README for configuration, local development,
+and deployment.
