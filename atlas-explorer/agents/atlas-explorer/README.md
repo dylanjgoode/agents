@@ -15,19 +15,17 @@ atlas-explorer/agents/atlas-explorer/
 ├── package.json / tsconfig.json       # TypeScript build
 ├── pnpm-workspace.yaml / pnpm-lock.yaml
 ├── dev.yaml                           # local Agentic service ports
-├── env.example                        # copy to .env
+├── .env.example                       # copy to .env
+├── mcp-config.example.json            # copy to ignored local MCP config
 ├── skills/                            # vendored MongoDB Agent Skills
 └── src/agent_atlas_explorer/
-    ├── main.ts                        # startup bootstrap + Magenta deep agent
+    ├── main.ts                        # Magenta deep agent
     ├── agentBackend.ts                # audited filesystem without model shell access
     ├── agentPolicy.ts                 # tool filtering and destructive-tool policy
     ├── modelResponse.ts               # removes repeated OpenAI tool metadata
     ├── toolErrors.ts                  # recoverable MCP error handling
     ├── systemMessage.ts               # Atlas Explorer instructions
-    ├── llm.ts                         # provider selection
-    └── mcp/
-        ├── bootstrap.ts               # Atlas Admin API identity creation
-        └── startup.ts                 # process-local credential injection
+    └── llm.ts                         # provider selection
 ```
 
 ## Configure
@@ -35,27 +33,28 @@ atlas-explorer/agents/atlas-explorer/
 Requires Node.js 24 or newer.
 
 ```bash
-cp env.example .env
+cp .env.example .env
+cp mcp-config.example.json mcp-config.json
 pnpm install
 ```
 
 Set these local secrets in `.env`:
 
-- `ATLAS_ORG_ID`
-- `ATLAS_PUBLIC_API_KEY`
-- `ATLAS_PRIVATE_API_KEY`
+- `ATLAS_MCP_CLIENT_ID`
+- `ATLAS_MCP_CLIENT_SECRET`
 - `OPENAI_API_KEY`
 
-Use Atlas programmatic API credentials authorized to create organization MCP
-configurations. Do not set `ATLAS_MCP_CLIENT_ID` or
-`ATLAS_MCP_CLIENT_SECRET`; startup generates them in memory.
+Create a dedicated MongoDB MCP configuration in Atlas before starting the
+agent. Grant only the Atlas roles the agent needs and add the environment's
+egress IP to the configuration's access list. The ignored `mcp-config.json`
+can hold the values used with the Atlas CLI. Use separate configurations for
+local development and production.
 
 For a deployed workspace, store the same values in Magenta's secret store:
 
 ```bash
-agentic secret set ATLAS_ORG_ID
-agentic secret set ATLAS_PUBLIC_API_KEY
-agentic secret set ATLAS_PRIVATE_API_KEY
+agentic secret set ATLAS_MCP_CLIENT_ID
+agentic secret set ATLAS_MCP_CLIENT_SECRET
 agentic secret set OPENAI_API_KEY
 ```
 
@@ -63,26 +62,23 @@ The application selects OpenAI `gpt-5.6-luna` in `main.ts`. To use another
 provider, model, or custom-compatible endpoint, update that code together with
 the provider-key entries under `required_secrets` and the Tool Pod destination
 under `network.egress`. The checked-in manifest permits the default OpenAI
-endpoint plus the Atlas, Managed MCP, and public-IPv4 hosts needed during
-per-process bootstrap and AER startup discovery.
+endpoint plus the Atlas OAuth and Managed MCP hosts needed by AER discovery and
+Tool Pod calls.
 
-## MCP startup lifecycle
+## MCP credential lifecycle
 
-Each AER and Tool Pod process:
+The MCP configuration is provisioned once in Atlas:
 
-1. Resolves its public IPv4 address.
-2. Creates a uniquely named Atlas organization MCP configuration with the
-   `ORG_OWNER` role and that address in its access list.
-3. Creates the configuration's one-time client secret.
-4. Places the generated client ID and secret only in process memory.
-5. Constructs the Magenta `App`; AER discovers MCP tools from `agent.yaml`,
-   while Tool Pods execute subsequent MCP calls. Both components therefore
-   require Managed MCP endpoint egress.
+1. The operator stores its client ID and secret in `.env` or Magenta's secret
+   store.
+2. AER and Tool Pod processes exchange those credentials for short-lived OAuth
+   access tokens.
+3. AER discovers MCP tools from `agent.yaml`; Tool Pods execute subsequent MCP
+   calls.
 
-The generated service-account secret expires after one year. A new process
-creates a new MCP configuration; stopped or crashed processes cannot delete
-their remote configuration automatically. Operators should periodically remove
-expired `atlas-explorer-*` configurations that are no longer in use.
+Rotate the client secret in Atlas, update the local or deployed secret, verify
+the agent, and then revoke the previous secret. After migrating, remove unused
+`atlas-explorer-*` configurations created by the old per-process bootstrap.
 
 ## Run locally
 

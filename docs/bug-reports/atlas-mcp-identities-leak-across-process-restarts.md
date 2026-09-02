@@ -6,6 +6,11 @@
 the resulting remote-resource count needs a retained Atlas inventory
 reproduction.**
 
+**Mitigation:** Atlas Explorer now consumes a manually provisioned Managed MCP
+identity instead of creating one during each process start. Restarts reuse the
+configured identity, eliminating further configuration churn. Existing
+`atlas-explorer-*` identities still require operator review and cleanup.
+
 Atlas Explorer creates a new UUID-named Atlas organization MCP configuration
 and a one-year client secret every time its module starts in a runtime process.
 Both the Agent Execution Runtime (AER) and Tool Pod evaluate the module, so one

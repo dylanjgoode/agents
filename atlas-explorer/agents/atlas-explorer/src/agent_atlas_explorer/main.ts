@@ -7,7 +7,6 @@ import { humanInTheLoopMiddleware } from "langchain";
 import { withoutShellExecution } from "./agentBackend.js";
 import { MUTATIVE_MCP_INTERRUPT_ON, selectAtlasTools } from "./agentPolicy.js";
 import { buildLLM } from "./llm.js";
-import { prepareAtlasMcpEnvironment } from "./mcp/startup.js";
 import { stripToolEchoMiddleware } from "./modelResponse.js";
 import { SYSTEM_PROMPT } from "./systemMessage.js";
 import { recoverToolErrorsMiddleware } from "./toolErrors.js";
@@ -23,8 +22,6 @@ function log(level: "INFO" | "WARN" | "ERROR", msg: string): void {
 process.env.AGENTIC_AGENT_WORKDIR ||= process.cwd();
 const { App, MagentaToolPodBackend } =
   await import("@magenta/magenta-sdklanggraph-ts");
-
-await prepareAtlasMcpEnvironment();
 
 export const app = new App({ appName: "atlas-explorer" });
 log("INFO", "App created; Atlas MCP tools will be discovered from agent.yaml");

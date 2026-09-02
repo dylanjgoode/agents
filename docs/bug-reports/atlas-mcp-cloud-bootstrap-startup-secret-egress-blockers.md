@@ -5,6 +5,11 @@
 **Status: deployment-readiness design blocker derived from CLI/config
 investigation; remote build and deploy not yet reproduced.**
 
+**Mitigation:** Atlas Explorer now uses a manually provisioned Managed MCP
+client ID and secret supplied to AER and Tool Pods. Runtime Atlas Admin API
+bootstrap and public-IP discovery are no longer part of application startup;
+Magenta performs only the OAuth token exchange and MCP connection.
+
 Atlas Explorer performs Atlas MCP identity bootstrap and MCP tool discovery at
 module startup. The same top-level module is evaluated in both AER and Tool Pod
 processes.

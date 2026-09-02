@@ -3,6 +3,10 @@ docker-compose.yml
 .dockerignore
 
 .env
+.env.*
+!.env.example
+mcp-config.json
+mcp-secret.json
 .devcontainer/
 
 node_modules/
@@ -11,4 +15,4 @@ dist/
 npm-debug.log*
 yarn-error.log*
 .DS_Store
-.env.*
+

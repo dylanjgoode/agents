@@ -21,31 +21,19 @@ features:
 required_secrets:
     aer:
         - OPENAI_API_KEY
-        - ATLAS_ORG_ID
-        - ATLAS_PUBLIC_API_KEY
-        - ATLAS_PRIVATE_API_KEY
+        - ATLAS_MCP_CLIENT_ID
+        - ATLAS_MCP_CLIENT_SECRET
     tools:
         invoke_llm:
             - OPENAI_API_KEY
         "mongodb__*":
-            - ATLAS_ORG_ID
-            - ATLAS_PUBLIC_API_KEY
-            - ATLAS_PRIVATE_API_KEY
-# Both runtime processes bootstrap an MCP identity, so each needs Atlas Admin
-# API and public-IPv4 discovery egress. AER also discovers remote MCP tools at
-# startup; actual LLM and MCP tool calls execute in Tool Pods.
+            - ATLAS_MCP_CLIENT_ID
+            - ATLAS_MCP_CLIENT_SECRET
+# AER discovers remote MCP tools at startup and Tool Pods execute subsequent
+# calls. Both exchange the configured client credentials for OAuth tokens.
 network:
     egress:
         - fqdn: cloud.mongodb.com
-          ports: [443]
-          component: all
-        - fqdn: api4.ipify.org
-          ports: [443]
-          component: all
-        - fqdn: ifconfig.me
-          ports: [443]
-          component: all
-        - fqdn: icanhazip.com
           ports: [443]
           component: all
         - fqdn: mcp.mongodb.com
@@ -54,8 +42,7 @@ network:
         - fqdn: api.openai.com
           ports: [443]
           component: tool
-# The startup bootstrap creates these client credentials in process memory
-# before the App reads this configuration.
+# Operators provision these MCP credentials and store them as runtime secrets.
 mcp:
     servers:
         mongodb:
