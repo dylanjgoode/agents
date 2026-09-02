@@ -31,8 +31,8 @@ should reproduce and triage each report before scheduling work.
 - [Aggregate write stages bypass tool-level HITL](./aggregate-write-stages-bypass-tool-level-hitl.md) — Design risk / high: application policy does not inspect `$out` or `$merge`; Managed MCP execution behavior needs reproduction.
 - [Automatic mutation retry can duplicate ambiguous writes](./automatic-mutation-retry-can-duplicate-ambiguous-writes.md) — Design risk / high: unknown-outcome mutation errors are returned with unconditional retry guidance.
 - [Deep-agent shell default exposes Tool Pod secrets](./deep-agent-shell-default-exposes-tool-pod-secrets.md) — Design risk / high: shell and credentials share a security domain; no exfiltration test was performed.
-- [Atlas MCP cloud bootstrap needs startup secrets and egress](./atlas-mcp-cloud-bootstrap-startup-secret-egress-blockers.md) — Deployment-readiness risk / high: lifecycle and component boundaries conflict; remote deployment is not reproduced.
-- [Atlas MCP identities accumulate across process restarts](./atlas-mcp-identities-leak-across-process-restarts.md) — Confirmed creation path, inventory reproduction needed / high: per-process privileged identities have no reconciliation or cleanup.
+- [Atlas MCP cloud bootstrap needs startup secrets and egress](./atlas-mcp-cloud-bootstrap-startup-secret-egress-blockers.md) — Mitigated in Atlas Explorer by replacing runtime bootstrap with pre-provisioned MCP credentials.
+- [Atlas MCP identities accumulate across process restarts](./atlas-mcp-identities-leak-across-process-restarts.md) — Mitigated in Atlas Explorer by reusing a pre-provisioned MCP identity; existing generated identities still need cleanup.
 
 ## Existing incident context
 
