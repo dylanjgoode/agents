@@ -1,0 +1,17 @@
+{
+  "mcpConfigName": "atlas-explorer",
+  "roles": [
+    "ORG_OWNER"
+  ],
+  "ipAccessList": [
+    {
+      "ipAddress": "YOUR_LOCAL_PUBLIC_IP"
+    },
+    {
+      "ipAddress": "MAGENTA_EGRESS_IP_1"
+    },
+    {
+      "ipAddress": "MAGENTA_EGRESS_IP_2..."
+    }
+  ]
+}

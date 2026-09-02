@@ -82,12 +82,6 @@ vi.mock("./llm.js", () => ({
   buildLLM: harness.buildLLM,
 }));
 
-vi.mock("./mcp/startup.js", () => ({
-  prepareAtlasMcpEnvironment: vi.fn(async () => {
-    harness.startupEvents.push("mcp");
-  }),
-}));
-
 describe("Atlas Explorer graph assembly", () => {
   beforeEach(() => {
     harness.buildLLM.mockClear();
@@ -103,7 +97,7 @@ describe("Atlas Explorer graph assembly", () => {
     expect(app).toBeDefined();
     expect(harness.appName).toBe("atlas-explorer");
     expect(harness.agentWorkdirAtAppConstruction).toBe(process.cwd());
-    expect(harness.startupEvents).toEqual(["mcp", "app"]);
+    expect(harness.startupEvents).toEqual(["app"]);
     expect(harness.builder).toBeTypeOf("function");
 
     harness.builder!();

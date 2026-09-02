@@ -5,6 +5,8 @@ docker-compose.yml
 .env
 .env.*
 !.env.example
+mcp-config.json
+mcp-secret.json
 .devcontainer/
 
 node_modules/

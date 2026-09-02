@@ -58,7 +58,11 @@ describe("MongoDB skills bundle", () => {
     );
     expect(allSkillMarkdown).toContain("mongodb__collection_indexes");
     expect(allSkillMarkdown).toContain("mongodb__atlas_streams_teardown");
-    expect(allSkillMarkdown).toContain("ATLAS_PRIVATE_API_KEY");
+    expect(allSkillMarkdown).toContain("ATLAS_MCP_CLIENT_ID");
+    expect(allSkillMarkdown).toContain("ATLAS_MCP_CLIENT_SECRET");
+    expect(allSkillMarkdown).not.toMatch(
+      /ATLAS_ORG_ID|ATLAS_PUBLIC_API_KEY|ATLAS_PRIVATE_API_KEY/,
+    );
   });
 
   it("routes every mutative Atlas Streams tool through runtime approval", () => {
