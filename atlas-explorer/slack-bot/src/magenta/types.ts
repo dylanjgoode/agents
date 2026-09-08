@@ -38,6 +38,17 @@ export interface SuspendedInvocation {
 
 export type InvocationResult = CompletedInvocation | SuspendedInvocation;
 
+export interface InvocationProgress {
+  content: string;
+  phase?: string;
+  toolName?: string;
+  status?: string;
+}
+
+export type InvocationProgressHandler = (
+  progress: InvocationProgress,
+) => void | Promise<void>;
+
 export interface InvokeInput {
   message: string;
   slackUserId: string;

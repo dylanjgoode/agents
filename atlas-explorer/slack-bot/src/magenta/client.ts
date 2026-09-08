@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type {
   AgenticClientConfig,
+  InvocationProgressHandler,
   InvocationResult,
   InvokeInput,
   ResumeInput,
@@ -21,6 +22,13 @@ const interruptSchema = z.object({
   }),
 });
 
+const suspendContextSchema = z
+  .object({
+    interrupts: z.array(interruptSchema).min(1),
+    resume_schema: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
 const invokeResponseSchema = z.object({
   success: z.boolean().optional(),
   response: z.string().optional(),
@@ -30,13 +38,16 @@ const invokeResponseSchema = z.object({
   session_id: z.string().optional(),
   execution_id: z.string().optional(),
   status: z.string().optional(),
-  suspend_context: z
-    .object({
-      interrupts: z.array(interruptSchema).optional(),
-      resume_schema: z.record(z.string(), z.unknown()).optional(),
-    })
-    .passthrough()
-    .optional(),
+  suspend_context: suspendContextSchema.optional(),
+});
+
+const streamChunkSchema = z.object({
+  chunk_type: z.string(),
+  content: z.string().optional().default(""),
+  metadata: z.record(z.string(), z.string()).optional().default({}),
+  error: z.string().optional(),
+  code: z.string().optional(),
+  execution_id: z.string().optional(),
 });
 
 interface ClientOptions {
@@ -89,30 +100,47 @@ export class MagentaClient {
     });
   }
 
-  resume(input: ResumeInput): Promise<InvocationResult> {
-    const decisions = Array.isArray(input.decision)
-      ? input.decision
-      : [input.decision];
-    const resumeMap = Object.fromEntries(
-      [
-        { interruptId: input.interruptId, decisions },
-        ...(input.additionalInterrupts ?? []).map((interrupt) => ({
-          interruptId: interrupt.interruptId,
-          decisions: Array.isArray(interrupt.decision)
-            ? interrupt.decision
-            : [interrupt.decision],
-        })),
-      ].map(({ interruptId, decisions: interruptDecisions }) => [
-        interruptId,
-        { decisions: interruptDecisions },
-      ]),
+  invokeStream(
+    input: InvokeInput,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult> {
+    const message = input.message.trim();
+    if (!message) {
+      return Promise.reject(
+        new AgenticApiError("Agent message cannot be empty", 0, "INVALID_INPUT"),
+      );
+    }
+    return this.stream(
+      {
+        message,
+        ...(input.sessionId ? { session_id: input.sessionId } : {}),
+        user_id: input.slackUserId,
+      },
+      onProgress,
     );
+  }
+
+  resume(input: ResumeInput): Promise<InvocationResult> {
     return this.post({
       session_id: input.sessionId,
       user_id: input.slackUserId,
       ...(this.config.invokeTarget === "local" ? { wait: true } : {}),
-      resume_map: resumeMap,
+      resume_map: buildResumeMap(input),
     });
+  }
+
+  resumeStream(
+    input: ResumeInput,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult> {
+    return this.stream(
+      {
+        session_id: input.sessionId,
+        user_id: input.slackUserId,
+        resume_map: buildResumeMap(input),
+      },
+      onProgress,
+    );
   }
 
   private async post(body: Record<string, unknown>): Promise<InvocationResult> {
@@ -252,10 +280,240 @@ export class MagentaClient {
     );
   }
 
+  private async stream(
+    body: Record<string, unknown>,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult> {
+    const sessionId =
+      typeof body.session_id === "string" ? body.session_id : undefined;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.config.apiKey) {
+      headers.Authorization = `Bearer ${this.config.apiKey}`;
+    }
+    if (sessionId) {
+      headers["X-Session-ID"] = sessionId;
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetchFn(this.invokeStreamUrl(), {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Agentic stream failed";
+      throw new AgenticApiError(message, 0, "REQUEST_FAILED");
+    }
+
+    if (!response.ok) {
+      const rawBody = await response.text();
+      let errorBody: {
+        error?: string;
+        message?: string;
+        detail?: string;
+        code?: string;
+      } = {};
+      try {
+        errorBody = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        throw new AgenticApiError(
+          `Agentic API returned non-JSON content (HTTP ${response.status})`,
+          response.status,
+          "INVALID_RESPONSE",
+        );
+      }
+      throw new AgenticApiError(
+        errorBody.error ??
+          errorBody.message ??
+          errorBody.detail ??
+          `Agentic stream failed (HTTP ${response.status})`,
+        response.status,
+        errorBody.code,
+      );
+    }
+
+    const returnedSessionId =
+      response.headers.get("X-Session-ID") ?? sessionId;
+
+    let executionId: string | undefined;
+    let finalContent: string | undefined;
+    let streamedContent = "";
+    let completed = false;
+    let suspendedContext: unknown;
+    for await (const data of readSseData(response)) {
+      const parsed = streamChunkSchema.safeParse(data);
+      if (!parsed.success) {
+        throw new AgenticApiError(
+          "Agentic stream returned an invalid event",
+          response.status,
+          "INVALID_RESPONSE",
+        );
+      }
+      const chunk = parsed.data;
+      executionId ??=
+        chunk.execution_id || chunk.metadata.execution_id || undefined;
+      if (chunk.chunk_type === "progress") {
+        await onProgress?.({
+          content: chunk.content,
+          phase: chunk.metadata.phase,
+          toolName: chunk.metadata.tool_name,
+          status: chunk.metadata.status,
+        });
+      } else if (chunk.chunk_type === "text") {
+        streamedContent += chunk.content;
+      } else if (chunk.chunk_type === "done") {
+        if (chunk.metadata.status === "suspended") {
+          const rawContext = chunk.metadata.suspend_context;
+          try {
+            suspendedContext = rawContext ? JSON.parse(rawContext) : undefined;
+          } catch {
+            throw new AgenticApiError(
+              "Agentic stream returned malformed suspend context",
+              response.status,
+              "INVALID_RESPONSE",
+            );
+          }
+        } else {
+          completed = true;
+          finalContent = chunk.content || streamedContent;
+        }
+      }
+      if (chunk.error) {
+        throw new AgenticApiError(
+          chunk.error,
+          response.status,
+          chunk.code ?? "EXECUTION_ERROR",
+        );
+      }
+    }
+
+    if (!returnedSessionId) {
+      throw new AgenticApiError(
+        "Agentic stream returned an invalid response without a session ID",
+        response.status,
+        "INVALID_RESPONSE",
+      );
+    }
+    if (suspendedContext !== undefined) {
+      const parsedContext = suspendContextSchema.safeParse(suspendedContext);
+      if (!executionId || !parsedContext.success) {
+        throw new AgenticApiError(
+          "Agentic stream returned invalid interrupt details",
+          response.status,
+          "INVALID_RESPONSE",
+        );
+      }
+      return {
+        kind: "suspended",
+        sessionId: returnedSessionId,
+        executionId,
+        interrupts: parsedContext.data.interrupts.map((interrupt) => ({
+          id: interrupt.id,
+          actionRequests: interrupt.value.actionRequests,
+        })),
+        ...(parsedContext.data.resume_schema
+          ? { resumeSchema: parsedContext.data.resume_schema }
+          : {}),
+      };
+    }
+    if (!completed || finalContent === undefined) {
+      throw new AgenticApiError(
+        "Agentic stream ended without a completed result",
+        response.status,
+        "INVALID_RESPONSE",
+      );
+    }
+    return {
+      kind: "completed",
+      response: finalContent,
+      sessionId: returnedSessionId,
+      ...(executionId ? { executionId } : {}),
+    };
+  }
+
   private invokeUrl(): string {
+    if (this.config.invokeTarget === "local") {
+      return `${this.config.baseUrl}/invoke`;
+    }
     const projectId = encodeURIComponent(this.config.projectId);
     const workspaceId = encodeURIComponent(this.config.workspaceId);
     return `${this.config.baseUrl}/api/v1/projects/${projectId}/workspaces/${workspaceId}/invoke`;
+  }
+
+  private invokeStreamUrl(): string {
+    if (this.config.invokeTarget === "local") {
+      return `${this.config.baseUrl}/invoke/stream`;
+    }
+    const projectId = encodeURIComponent(this.config.projectId);
+    const workspaceId = encodeURIComponent(this.config.workspaceId);
+    return `${this.config.baseUrl}/api/v1/projects/${projectId}/workspaces/${workspaceId}/invokeStream`;
+  }
+}
+
+function buildResumeMap(input: ResumeInput): Record<string, unknown> {
+  const decisions = Array.isArray(input.decision)
+    ? input.decision
+    : [input.decision];
+  return Object.fromEntries(
+    [
+      { interruptId: input.interruptId, decisions },
+      ...(input.additionalInterrupts ?? []).map((interrupt) => ({
+        interruptId: interrupt.interruptId,
+        decisions: Array.isArray(interrupt.decision)
+          ? interrupt.decision
+          : [interrupt.decision],
+      })),
+    ].map(({ interruptId, decisions: interruptDecisions }) => [
+      interruptId,
+      { decisions: interruptDecisions },
+    ]),
+  );
+}
+
+async function* readSseData(
+  response: Response,
+): AsyncGenerator<unknown, void, undefined> {
+  if (!response.body) {
+    throw new AgenticApiError(
+      "Agentic stream returned an empty response body",
+      response.status,
+      "INVALID_RESPONSE",
+    );
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    let lineEnd = buffer.indexOf("\n");
+    while (lineEnd >= 0) {
+      const line = buffer.slice(0, lineEnd).trim();
+      buffer = buffer.slice(lineEnd + 1);
+      if (line.startsWith("data:")) {
+        const data = line.slice("data:".length).trim();
+        if (data && data !== "[DONE]") {
+          try {
+            yield JSON.parse(data);
+          } catch {
+            throw new AgenticApiError(
+              "Agentic stream returned malformed JSON",
+              response.status,
+              "INVALID_RESPONSE",
+            );
+          }
+        }
+      }
+      lineEnd = buffer.indexOf("\n");
+    }
+    if (done) {
+      break;
+    }
   }
 }
 

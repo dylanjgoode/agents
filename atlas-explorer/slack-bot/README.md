@@ -14,7 +14,8 @@ workspace; access is not scoped to each user's Atlas identity.
 
 - Node.js 22 or newer and pnpm
 - A Slack workspace where you can create and install an app
-- A deployed Atlas Explorer workspace and an Agentic Platform API key
+- Either a deployed Atlas Explorer workspace and Agentic Platform API key, or
+  a local Atlas Explorer `agentic dev` stack
 - For Vercel only, MongoDB 5.0+ for persistent thread mappings and partial TTL
   retention indexes
 
@@ -29,8 +30,8 @@ agentic api-key create
 agentic invoke --json "List the Atlas projects I can access"
 ```
 
-The JSON probe confirms the project/workspace target and the current
-`session_id` invocation contract before Slack is involved.
+For a deployed agent, the JSON probe confirms the project/workspace target and
+the current `session_id` invocation contract before Slack is involved.
 
 ## Configure the Slack app
 
@@ -95,11 +96,12 @@ AGENTIC_PROJECT_ID=
 AGENTIC_WORKSPACE_ID=
 ```
 
-Start the bot with `pnpm start`. The client uses the Playground on port 3000,
-whose gateway-shaped invoke route selects the local workspace and proxies to
-OE. Local mode sends OE's required `wait: true` and accepts its `result`
-response shape. Do not point the client directly at OE port 8000; that endpoint
-does not expose the gateway-shaped route used by this client. Atlas MCP
+Start the bot with `pnpm start`. The client calls the Playground's
+`/invoke/stream` proxy on port 3000, which injects the local workspace scope
+before forwarding to OE. Magenta tool progress updates the transient Slack
+thread status; streamed model text is collected and posted once as the durable
+final response. Do not point the client directly at OE port 8000 because the
+client relies on the Playground proxy to inject that scope. Atlas MCP
 credentials come from the agent's local `.env`.
 
 ## Deploy to Vercel

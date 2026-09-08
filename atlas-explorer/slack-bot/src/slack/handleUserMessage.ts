@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { KnownBlock } from "@slack/types";
 
 import type {
+  InvocationProgressHandler,
   InvocationResult,
   InvokeInput,
   ResumeInput,
@@ -15,7 +16,15 @@ const REVIEW_CLAIM_MAX_MS = 10 * 60 * 1_000;
 
 export interface AgentGateway {
   invoke(input: InvokeInput): Promise<InvocationResult>;
+  invokeStream(
+    input: InvokeInput,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult>;
   resume(input: ResumeInput): Promise<InvocationResult>;
+  resumeStream(
+    input: ResumeInput,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult>;
 }
 
 export interface SlackPublisher {
@@ -175,13 +184,19 @@ export async function handleUserMessage(
 
   let result: InvocationResult;
   try {
-    result = await dependencies.agent.invoke({
-      message,
-      ...(activeRecord.magentaSessionId
-        ? { sessionId: activeRecord.magentaSessionId }
-        : {}),
-      slackUserId: input.slackUserId,
-    });
+    result = await dependencies.agent.invokeStream(
+      {
+        message,
+        ...(activeRecord.magentaSessionId
+          ? { sessionId: activeRecord.magentaSessionId }
+          : {}),
+        slackUserId: input.slackUserId,
+      },
+      createProgressHandler(
+        dependencies.publisher,
+        dependencies.logger,
+      ),
+    );
   } catch (error) {
     dependencies.logger?.error("Atlas Explorer invocation failed", error);
     const released = await releaseTurn(eventId, activeRecord, dependencies).catch(
@@ -217,6 +232,26 @@ export async function handleUserMessage(
       })
       .catch(() => undefined);
   }
+}
+
+export function createProgressHandler(
+  publisher: SlackPublisher,
+  logger?: HandlerLogger,
+): InvocationProgressHandler {
+  return async (progress) => {
+    const status = progress.content.trim();
+    if (!status) {
+      return;
+    }
+    await publisher.setStatus(status.slice(0, 100)).catch(
+      (error: unknown) => {
+        logger?.warn?.(
+          "Could not update Slack progress status",
+          error,
+        );
+      },
+    );
+  };
 }
 
 export async function publishInvocationResult(

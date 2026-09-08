@@ -6,8 +6,8 @@
 services:
   playground:
     port: 3000
-  # oe:
-  #   port: 8000  # Orchestration Engine HTTP API.
+  oe:
+    port: 8000  # Orchestration Engine HTTP API used by local integrations.
   # aer:
   #   port: 8001  # Agent Execution Runtime.
   # tool:

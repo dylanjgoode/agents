@@ -19,6 +19,25 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function streamResponse(
+  chunks: unknown[],
+  sessionId: string | null = "stream-session",
+): Response {
+  const headers: Record<string, string> = {
+    "content-type": "text/event-stream",
+  };
+  if (sessionId) {
+    headers["X-Session-ID"] = sessionId;
+  }
+  return new Response(
+    chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(""),
+    {
+      status: 200,
+      headers,
+    },
+  );
+}
+
 describe("MagentaClient", () => {
   it("invokes Atlas Explorer and returns its session", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
@@ -118,6 +137,9 @@ describe("MagentaClient", () => {
       sessionId: "local-session",
       executionId: "local-execution",
     });
+    expect(fetchFn.mock.calls[0]?.[0]).toBe(
+      "http://localhost:3000/invoke",
+    );
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
       message: "List projects",
       user_id: "U123",
@@ -125,6 +147,230 @@ describe("MagentaClient", () => {
     });
     expect(fetchFn.mock.calls[0]?.[1]?.headers).toEqual({
       "Content-Type": "application/json",
+    });
+  });
+
+  it("streams local tool progress and returns only the collected final message", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      streamResponse([
+        {
+          chunk_type: "metadata",
+          metadata: { status: "started" },
+          execution_id: "stream-execution",
+        },
+        {
+          chunk_type: "progress",
+          content: "Calling tool: mongodb__atlas_list_projects...",
+          metadata: {
+            phase: "tool_start",
+            tool_name: "mongodb__atlas_list_projects",
+          },
+          execution_id: "stream-execution",
+        },
+        {
+          chunk_type: "text",
+          content: "partial text that is not published independently",
+          execution_id: "stream-execution",
+        },
+        {
+          chunk_type: "done",
+          content: "There are three projects.",
+          metadata: { status: "completed" },
+          execution_id: "stream-execution",
+        },
+      ]),
+    );
+    const client = new MagentaClient(
+      {
+        baseUrl: "http://localhost:3000",
+        projectId: "local",
+        workspaceId: "local",
+        invokeTarget: "local",
+      },
+      { fetchFn },
+    );
+    const progress: unknown[] = [];
+
+    await expect(
+      client.invokeStream(
+        { message: "List projects", slackUserId: "U123" },
+        (event) => {
+          progress.push(event);
+        },
+      ),
+    ).resolves.toEqual({
+      kind: "completed",
+      response: "There are three projects.",
+      sessionId: "stream-session",
+      executionId: "stream-execution",
+    });
+    expect(fetchFn.mock.calls[0]?.[0]).toBe(
+      "http://localhost:3000/invoke/stream",
+    );
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      message: "List projects",
+      user_id: "U123",
+    });
+    expect(progress).toEqual([
+      {
+        content: "Calling tool: mongodb__atlas_list_projects...",
+        phase: "tool_start",
+        toolName: "mongodb__atlas_list_projects",
+        status: undefined,
+      },
+    ]);
+  });
+
+  it("uses the deployed gateway invokeStream route", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      streamResponse(
+        [
+          {
+            chunk_type: "done",
+            content: "Gateway response.",
+            metadata: { status: "completed" },
+            execution_id: "gateway-execution",
+          },
+        ],
+        "gateway-session",
+      ),
+    );
+    const client = new MagentaClient(config, { fetchFn });
+
+    await client.invokeStream(
+      { message: "List projects", slackUserId: "U123" },
+      () => undefined,
+    );
+
+    expect(fetchFn.mock.calls[0]?.[0]).toBe(
+      "https://agentic.example.test/api/v1/projects/project%2Fid/workspaces/workspace%20id/invokeStream",
+    );
+  });
+
+  it("returns an agent interrupt from a suspended stream", async () => {
+    const suspendContext = {
+      interrupts: [
+        {
+          id: "interrupt-1",
+          value: {
+            actionRequests: [
+              {
+                name: "mongodb__insert_many",
+                args: { database: "inventory", collection: "items" },
+              },
+            ],
+          },
+        },
+      ],
+      resume_schema: { type: "object" },
+    };
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      streamResponse([
+        {
+          chunk_type: "done",
+          metadata: {
+            status: "suspended",
+            execution_id: "suspended-execution",
+            suspend_context: JSON.stringify(suspendContext),
+          },
+        },
+      ]),
+    );
+    const client = new MagentaClient(config, { fetchFn });
+
+    await expect(
+      client.invokeStream(
+        { message: "Insert an item", slackUserId: "U123" },
+        () => undefined,
+      ),
+    ).resolves.toEqual({
+      kind: "suspended",
+      sessionId: "stream-session",
+      executionId: "suspended-execution",
+      interrupts: [
+        {
+          id: "interrupt-1",
+          actionRequests: [
+            {
+              name: "mongodb__insert_many",
+              args: { database: "inventory", collection: "items" },
+            },
+          ],
+        },
+      ],
+      resumeSchema: { type: "object" },
+    });
+  });
+
+  it("surfaces a streamed execution error", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      streamResponse(
+        [
+          {
+            chunk_type: "error",
+            error: "LLM provider unavailable",
+            code: "LLM_UNAVAILABLE",
+          },
+        ],
+        null,
+      ),
+    );
+    const client = new MagentaClient(config, { fetchFn });
+
+    await expect(
+      client.invokeStream(
+        { message: "List projects", slackUserId: "U123" },
+        () => undefined,
+      ),
+    ).rejects.toMatchObject({
+      name: "AgenticApiError",
+      code: "LLM_UNAVAILABLE",
+      message: "LLM provider unavailable",
+    });
+  });
+
+  it("resumes an interrupt through the local stream", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      streamResponse([
+        {
+          chunk_type: "done",
+          content: "Operation completed.",
+          metadata: { status: "completed" },
+          execution_id: "resumed-execution",
+        },
+      ]),
+    );
+    const client = new MagentaClient(
+      {
+        baseUrl: "http://localhost:3000",
+        projectId: "local",
+        workspaceId: "local",
+        invokeTarget: "local",
+      },
+      { fetchFn },
+    );
+
+    await client.resumeStream(
+      {
+        sessionId: "stream-session",
+        slackUserId: "U123",
+        interruptId: "interrupt-1",
+        decision: { type: "approve" },
+      },
+      () => undefined,
+    );
+
+    expect(fetchFn.mock.calls[0]?.[0]).toBe(
+      "http://localhost:3000/invoke/stream",
+    );
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      session_id: "stream-session",
+      user_id: "U123",
+      resume_map: {
+        "interrupt-1": {
+          decisions: [{ type: "approve" }],
+        },
+      },
     });
   });
 

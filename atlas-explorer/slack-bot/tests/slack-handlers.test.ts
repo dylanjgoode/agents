@@ -2,6 +2,8 @@ import type { KnownBlock } from "@slack/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  InvocationProgress,
+  InvocationProgressHandler,
   InvocationResult,
   InvokeInput,
   ResumeInput,
@@ -19,7 +21,10 @@ import type { ThreadStore } from "../src/store/threadStore.js";
 
 class FakeAgentGateway implements AgentGateway {
   invokeInputs: InvokeInput[] = [];
+  invokeStreamInputs: InvokeInput[] = [];
   resumeInputs: ResumeInput[] = [];
+  resumeStreamInputs: ResumeInput[] = [];
+  progressEvents: InvocationProgress[] = [];
   invokeResult!: InvocationResult;
   resumeResult!: InvocationResult;
   resumeError?: unknown;
@@ -31,6 +36,33 @@ class FakeAgentGateway implements AgentGateway {
 
   async resume(input: ResumeInput): Promise<InvocationResult> {
     this.resumeInputs.push(input);
+    if (this.resumeError) {
+      throw this.resumeError;
+    }
+    return this.resumeResult;
+  }
+
+  async invokeStream(
+    input: InvokeInput,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult> {
+    this.invokeInputs.push(input);
+    this.invokeStreamInputs.push(input);
+    for (const progress of this.progressEvents) {
+      await onProgress?.(progress);
+    }
+    return this.invokeResult;
+  }
+
+  async resumeStream(
+    input: ResumeInput,
+    onProgress?: InvocationProgressHandler,
+  ): Promise<InvocationResult> {
+    this.resumeInputs.push(input);
+    this.resumeStreamInputs.push(input);
+    for (const progress of this.progressEvents) {
+      await onProgress?.(progress);
+    }
     if (this.resumeError) {
       throw this.resumeError;
     }
@@ -149,6 +181,46 @@ describe("Slack conversation handlers", () => {
     ).toMatchObject({
       magentaSessionId: "session-1",
     });
+  });
+
+  it("shows streamed tool progress as transient statuses only", async () => {
+    agent.invokeResult = completed;
+    agent.progressEvents = [
+      {
+        content: "Thinking...",
+        phase: "tool_start",
+        toolName: "invoke_llm",
+      },
+      {
+        content: "Calling tool: mongodb__atlas_list_projects...",
+        phase: "tool_start",
+        toolName: "mongodb__atlas_list_projects",
+      },
+      {
+        content: "",
+        phase: "tool_end",
+        toolName: "mongodb__atlas_list_projects",
+        status: "success",
+      },
+    ];
+
+    await handleUserMessage(
+      {
+        channelId: "C123",
+        threadTs: "1720000000.000100",
+        slackUserId: "U123",
+        text: "List projects",
+      },
+      { agent, publisher, store },
+    );
+
+    expect(publisher.statuses).toEqual([
+      "Exploring Atlas…",
+      "Thinking...",
+      "Calling tool: mongodb__atlas_list_projects...",
+    ]);
+    expect(publisher.messages).toEqual([]);
+    expect(publisher.agentResponses).toEqual(["There are three projects."]);
   });
 
   it("reuses the Magenta session for a Slack thread follow-up", async () => {
@@ -351,6 +423,13 @@ describe("Slack conversation handlers", () => {
       response: "The item was inserted.",
       executionId: "execution-3",
     };
+    agent.progressEvents = [
+      {
+        content: "Calling tool: mongodb__insert_many...",
+        phase: "tool_start",
+        toolName: "mongodb__insert_many",
+      },
+    ];
 
     const outcome = await handleReviewDecision(
       {
@@ -380,6 +459,10 @@ describe("Slack conversation handlers", () => {
       }),
     );
     expect(publisher.agentResponses).toEqual(["The item was inserted."]);
+    expect(publisher.statuses).toEqual([
+      "Applying approved operation…",
+      "Calling tool: mongodb__insert_many...",
+    ]);
   });
 
   it("rejects every action with feedback for the model", async () => {

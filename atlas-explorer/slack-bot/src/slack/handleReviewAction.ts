@@ -1,6 +1,7 @@
 import { AgenticApiError } from "../magenta/client.js";
 import type { ThreadStore } from "../store/threadStore.js";
 import {
+  createProgressHandler,
   publishInvocationResult,
   type AgentGateway,
   type HandlerLogger,
@@ -116,12 +117,18 @@ export async function handleReviewDecision(
 
   let result;
   try {
-    result = await dependencies.agent.resume({
-      sessionId,
-      ...primaryDecision,
-      ...(additionalInterrupts.length ? { additionalInterrupts } : {}),
-      slackUserId: input.slackUserId,
-    });
+    result = await dependencies.agent.resumeStream(
+      {
+        sessionId,
+        ...primaryDecision,
+        ...(additionalInterrupts.length ? { additionalInterrupts } : {}),
+        slackUserId: input.slackUserId,
+      },
+      createProgressHandler(
+        dependencies.publisher,
+        dependencies.logger,
+      ),
+    );
   } catch (error) {
     dependencies.logger?.error("Atlas Explorer review resume failed", error);
     const outcomeWasConfirmedNotApplied =
