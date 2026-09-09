@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSlackPublisher } from "../src/slack/publisher.js";
+import { createSlackPublisher } from "./publisher.js";
 
 describe("createSlackPublisher", () => {
   it("uses Bolt status and attaches a durable delivery ID to replies", async () => {

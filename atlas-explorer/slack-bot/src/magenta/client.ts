@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 import type {
   AgenticClientConfig,
   InvocationProgressHandler,
@@ -7,48 +5,11 @@ import type {
   InvokeInput,
   ResumeInput,
 } from "./types.js";
-
-const actionRequestSchema = z.object({
-  name: z.string().min(1),
-  args: z.record(z.string(), z.unknown()),
-  description: z.string().optional(),
-});
-
-const interruptSchema = z.object({
-  id: z.string().min(1),
-  value: z.object({
-    actionRequests: z.array(actionRequestSchema).min(1),
-    reviewConfigs: z.array(z.unknown()).optional(),
-  }),
-});
-
-const suspendContextSchema = z
-  .object({
-    interrupts: z.array(interruptSchema).min(1),
-    resume_schema: z.record(z.string(), z.unknown()).optional(),
-  })
-  .passthrough();
-
-const invokeResponseSchema = z.object({
-  success: z.boolean().optional(),
-  response: z.string().optional(),
-  result: z.unknown().optional(),
-  error: z.string().optional(),
-  code: z.string().optional(),
-  session_id: z.string().optional(),
-  execution_id: z.string().optional(),
-  status: z.string().optional(),
-  suspend_context: suspendContextSchema.optional(),
-});
-
-const streamChunkSchema = z.object({
-  chunk_type: z.string(),
-  content: z.string().optional().default(""),
-  metadata: z.record(z.string(), z.string()).optional().default({}),
-  error: z.string().optional(),
-  code: z.string().optional(),
-  execution_id: z.string().optional(),
-});
+import {
+  invokeResponseSchema,
+  streamChunkSchema,
+  suspendContextSchema,
+} from "./types.js";
 
 interface ClientOptions {
   fetchFn?: typeof fetch;
@@ -263,10 +224,7 @@ export class MagentaClient {
         kind: "suspended",
         sessionId: returnedSessionId,
         executionId: data.execution_id,
-        interrupts: interrupts.map((interrupt) => ({
-          id: interrupt.id,
-          actionRequests: interrupt.value.actionRequests,
-        })),
+        interrupts,
         ...(data.suspend_context?.resume_schema
           ? { resumeSchema: data.suspend_context.resume_schema }
           : {}),
@@ -412,10 +370,7 @@ export class MagentaClient {
         kind: "suspended",
         sessionId: returnedSessionId,
         executionId,
-        interrupts: parsedContext.data.interrupts.map((interrupt) => ({
-          id: interrupt.id,
-          actionRequests: interrupt.value.actionRequests,
-        })),
+        interrupts: parsedContext.data.interrupts,
         ...(parsedContext.data.resume_schema
           ? { resumeSchema: parsedContext.data.resume_schema }
           : {}),

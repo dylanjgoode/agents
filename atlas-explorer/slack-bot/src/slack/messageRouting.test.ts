@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { routeSlackMessage } from "../src/slack/messageRouting.js";
-import { MemoryThreadStore } from "../src/store/memoryThreadStore.js";
+import { MemoryThreadStore } from "../store/memoryThreadStore.js";
+import { routeSlackMessage } from "./messageRouting.js";
 
 describe("routeSlackMessage", () => {
   it("routes direct messages into a new Slack thread", async () => {

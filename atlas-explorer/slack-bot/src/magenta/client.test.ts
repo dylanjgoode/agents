@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AgenticApiError,
   MagentaClient,
-} from "../src/magenta/client.js";
+} from "./client.js";
 
 const config = {
   baseUrl: "https://agentic.example.test/",

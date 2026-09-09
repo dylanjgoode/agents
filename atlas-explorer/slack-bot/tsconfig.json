@@ -17,5 +17,10 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["api/**/*.ts", "src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.test.ts",
+    "src/**/*.test-helpers.ts"
+  ]
 }

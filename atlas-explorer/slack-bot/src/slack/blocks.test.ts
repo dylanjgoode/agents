@@ -5,7 +5,7 @@ import {
   REVIEW_REJECT_ACTION_ID,
   buildReviewMessage,
   parseReviewTarget,
-} from "../src/slack/blocks.js";
+} from "./blocks.js";
 
 describe("buildReviewMessage", () => {
   it("shows every action that an approval decision will cover", () => {

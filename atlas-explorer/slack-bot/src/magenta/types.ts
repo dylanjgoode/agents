@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface AgenticClientConfig {
   baseUrl: string;
   apiKey?: string;
@@ -6,37 +8,92 @@ export interface AgenticClientConfig {
   invokeTarget?: "gateway" | "local";
 }
 
-export interface AgentActionRequest {
-  name: string;
-  args: Record<string, unknown>;
-  description?: string;
-}
+export const agentActionRequestSchema = z.object({
+  name: z.string().min(1),
+  args: z.record(z.string(), z.unknown()),
+  description: z.string().optional(),
+});
 
-export interface AgentInterrupt {
-  id: string;
-  actionRequests: AgentActionRequest[];
-}
+export type AgentActionRequest = z.infer<typeof agentActionRequestSchema>;
+
+export const agentInterruptSchema = z.object({
+  id: z.string().min(1),
+  actionRequests: z.array(agentActionRequestSchema).min(1),
+});
+
+export type AgentInterrupt = z.infer<typeof agentInterruptSchema>;
 
 export type ReviewDecision =
   | { type: "approve" }
   | { type: "reject"; message?: string };
 
-export interface CompletedInvocation {
-  kind: "completed";
-  response: string;
-  sessionId: string;
-  executionId?: string;
-}
+export const completedInvocationSchema = z.object({
+  kind: z.literal("completed"),
+  response: z.string(),
+  sessionId: z.string().min(1),
+  executionId: z.string().optional(),
+});
 
-export interface SuspendedInvocation {
-  kind: "suspended";
-  sessionId: string;
-  executionId: string;
-  interrupts: AgentInterrupt[];
-  resumeSchema?: Record<string, unknown>;
-}
+export type CompletedInvocation = z.infer<typeof completedInvocationSchema>;
 
-export type InvocationResult = CompletedInvocation | SuspendedInvocation;
+export const suspendedInvocationSchema = z.object({
+  kind: z.literal("suspended"),
+  sessionId: z.string().min(1),
+  executionId: z.string().min(1),
+  interrupts: z.array(agentInterruptSchema).min(1),
+  resumeSchema: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type SuspendedInvocation = z.infer<typeof suspendedInvocationSchema>;
+
+export const invocationResultSchema = z.discriminatedUnion("kind", [
+  completedInvocationSchema,
+  suspendedInvocationSchema,
+]);
+
+export type InvocationResult = z.infer<typeof invocationResultSchema>;
+
+const wireInterruptSchema = z
+  .object({
+    id: z.string().min(1),
+    value: z.object({
+      actionRequests: z.array(agentActionRequestSchema).min(1),
+      reviewConfigs: z.array(z.unknown()).optional(),
+    }),
+  })
+  .transform(({ id, value }) => ({
+    id,
+    actionRequests: value.actionRequests,
+  }))
+  .pipe(agentInterruptSchema);
+
+export const suspendContextSchema = z
+  .object({
+    interrupts: z.array(wireInterruptSchema).min(1),
+    resume_schema: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+export const invokeResponseSchema = z.object({
+  success: z.boolean().optional(),
+  response: z.string().optional(),
+  result: z.unknown().optional(),
+  error: z.string().optional(),
+  code: z.string().optional(),
+  session_id: z.string().optional(),
+  execution_id: z.string().optional(),
+  status: z.string().optional(),
+  suspend_context: suspendContextSchema.optional(),
+});
+
+export const streamChunkSchema = z.object({
+  chunk_type: z.string(),
+  content: z.string().optional().default(""),
+  metadata: z.record(z.string(), z.string()).optional().default({}),
+  error: z.string().optional(),
+  code: z.string().optional(),
+  execution_id: z.string().optional(),
+});
 
 export interface InvocationProgress {
   content: string;
