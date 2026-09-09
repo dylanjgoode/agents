@@ -29,11 +29,8 @@ export class MemoryThreadStore implements ThreadStore {
     this.now = options.now ?? Date.now;
   }
 
-  async get(
-    channelId: string,
-    threadTs: string,
-  ): Promise<ThreadRecord | null> {
-    const key = threadKey(channelId, threadTs);
+  async get(threadId: string): Promise<ThreadRecord | null> {
+    const key = threadKey(threadId);
     const record = this.records.get(key);
     if (!record) {
       return null;
@@ -47,7 +44,7 @@ export class MemoryThreadStore implements ThreadStore {
 
   async put(record: ThreadRecord): Promise<void> {
     this.records.set(
-      threadKey(record.channelId, record.threadTs),
+      threadKey(record.threadId),
       structuredClone(record),
     );
     this.removeExpiredRecords();
@@ -55,14 +52,13 @@ export class MemoryThreadStore implements ThreadStore {
   }
 
   async claimTurn(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     eventId: string,
     claimedAt: Date,
   ): Promise<TurnClaim> {
-    const key = threadKey(channelId, threadTs);
+    const key = threadKey(threadId);
     const existing = this.records.get(key);
-    if (existing?.recentSlackEventIds?.includes(eventId)) {
+    if (existing?.recentEventIds?.includes(eventId)) {
       return {
         status: "duplicate",
         record: structuredClone(existing),
@@ -87,11 +83,10 @@ export class MemoryThreadStore implements ThreadStore {
     }
 
     const claimed: ThreadRecord = {
-      ...(existing ?? { channelId, threadTs }),
-      channelId,
-      threadTs,
-      recentSlackEventIds: [
-        ...(existing?.recentSlackEventIds ?? []).filter(
+      ...(existing ?? { threadId }),
+      threadId,
+      recentEventIds: [
+        ...(existing?.recentEventIds ?? []).filter(
           (storedEventId) => storedEventId !== eventId,
         ),
         eventId,
@@ -112,7 +107,7 @@ export class MemoryThreadStore implements ThreadStore {
     eventId: string,
     record: ThreadRecord,
   ): Promise<boolean> {
-    const key = threadKey(record.channelId, record.threadTs);
+    const key = threadKey(record.threadId);
     if (this.records.get(key)?.inFlightEventId !== eventId) {
       return false;
     }
@@ -122,12 +117,11 @@ export class MemoryThreadStore implements ThreadStore {
   }
 
   async claimPendingReview(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     interruptId: string,
     claimedAt: Date,
   ): Promise<ThreadRecord | null> {
-    const key = threadKey(channelId, threadTs);
+    const key = threadKey(threadId);
     const record = this.records.get(key);
     if (
       !record ||
@@ -151,7 +145,7 @@ export class MemoryThreadStore implements ThreadStore {
     interruptId: string,
     record: ThreadRecord,
   ): Promise<boolean> {
-    const key = threadKey(record.channelId, record.threadTs);
+    const key = threadKey(record.threadId);
     const current = this.records.get(key);
     if (
       current?.pendingInterruptId !== interruptId ||
@@ -165,12 +159,11 @@ export class MemoryThreadStore implements ThreadStore {
   }
 
   async clearPendingDelivery(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     deliveryId: string,
     claimId: string,
   ): Promise<boolean> {
-    const key = threadKey(channelId, threadTs);
+    const key = threadKey(threadId);
     const current = this.records.get(key);
     if (
       current?.pendingDelivery?.id !== deliveryId ||
@@ -187,13 +180,12 @@ export class MemoryThreadStore implements ThreadStore {
   }
 
   async claimPendingDelivery(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     deliveryId: string,
     claimId: string,
     claimedAt: Date,
   ) {
-    const key = threadKey(channelId, threadTs);
+    const key = threadKey(threadId);
     const current = this.records.get(key);
     const delivery = current?.pendingDelivery;
     const hasActiveClaim =

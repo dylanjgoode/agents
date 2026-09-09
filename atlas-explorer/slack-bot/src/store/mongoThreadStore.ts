@@ -1,4 +1,8 @@
-import { MongoClient } from "mongodb";
+import {
+  type Collection,
+  type Db,
+  MongoClient,
+} from "mongodb";
 
 import type {
   ThreadRecord,
@@ -11,52 +15,64 @@ interface StoredThreadRecord extends ThreadRecord {
   _id: string;
 }
 
-export interface ThreadCollection {
-  createIndex(
-    keys: Record<string, 1 | -1>,
-    options: {
-      unique?: boolean;
-      name?: string;
-      expireAfterSeconds?: number;
-      partialFilterExpression?: Record<string, unknown>;
-    },
-  ): Promise<string>;
-  findOne(filter: { _id: string }): Promise<StoredThreadRecord | null>;
-  replaceOne(
-    filter: Record<string, unknown>,
-    replacement: StoredThreadRecord,
-    options: { upsert: boolean },
-  ): Promise<{ matchedCount: number }>;
-  insertOne(document: StoredThreadRecord): Promise<unknown>;
-  findOneAndUpdate(
-    filter: Record<string, unknown>,
-    update: Record<string, unknown>,
-    options: { returnDocument: "after" },
-  ): Promise<StoredThreadRecord | null>;
-}
+type LegacyStoredThreadRecord = Omit<
+  ThreadRecord,
+  "pendingRequestedByActorId" | "recentEventIds" | "threadId"
+> & {
+  _id: string;
+  channelId: string;
+  chatSdkMigratedAt?: Date;
+  chatSdkMigrationState?: "copying" | "complete";
+  chatSdkThreadId?: string;
+  pendingRequestedBySlackUserId?: string;
+  recentSlackEventIds?: string[];
+  threadTs: string;
+};
 
 interface MongoThreadStoreOptions {
   client?: MongoClient;
   initializeOnAccess?: boolean;
+  legacyCollection?: Collection<LegacyStoredThreadRecord>;
 }
 
 const TURN_LEASE_MS = 10 * 60 * 1_000;
 const DELIVERY_LEASE_MS = 5 * 60 * 1_000;
 const RECENT_EVENT_LIMIT = 20;
+const COLLECTION_NAME = "chat_threads";
+const LEGACY_COLLECTION_NAME = "slack_threads";
 
 export class MongoThreadStore implements ThreadStore {
-  private readonly collection: ThreadCollection;
+  private readonly collection: Collection<StoredThreadRecord>;
   private readonly client?: MongoClient;
   private readonly initializeOnAccess: boolean;
+  private readonly legacyCollection?: Collection<LegacyStoredThreadRecord>;
   private initialization?: Promise<void>;
 
   constructor(
-    collection: ThreadCollection,
+    collection: Collection<StoredThreadRecord>,
     options: MongoThreadStoreOptions = {},
   ) {
     this.collection = collection;
     this.client = options.client;
     this.initializeOnAccess = options.initializeOnAccess ?? false;
+    this.legacyCollection = options.legacyCollection;
+  }
+
+  static fromDatabase(
+    database: Db,
+    options: MongoThreadStoreOptions = {},
+  ): MongoThreadStore {
+    return new MongoThreadStore(
+      database.collection<StoredThreadRecord>(COLLECTION_NAME),
+      {
+        ...options,
+        legacyCollection:
+          options.legacyCollection ??
+          database.collection<LegacyStoredThreadRecord>(
+            LEGACY_COLLECTION_NAME,
+          ),
+      },
+    );
   }
 
   static async connect(
@@ -66,11 +82,8 @@ export class MongoThreadStore implements ThreadStore {
     const client = new MongoClient(uri);
     try {
       await client.connect();
-      const collection = client
-        .db(databaseName)
-        .collection<StoredThreadRecord>("slack_threads");
-      const store = new MongoThreadStore(
-        collection as unknown as ThreadCollection,
+      const store = MongoThreadStore.fromDatabase(
+        client.db(databaseName),
         { client },
       );
       await store.initialize();
@@ -81,22 +94,11 @@ export class MongoThreadStore implements ThreadStore {
     }
   }
 
-  static createLazy(uri: string, databaseName: string): MongoThreadStore {
-    const client = new MongoClient(uri);
-    const collection = client
-      .db(databaseName)
-      .collection<StoredThreadRecord>("slack_threads");
-    return new MongoThreadStore(collection as unknown as ThreadCollection, {
-      client,
-      initializeOnAccess: true,
-    });
-  }
-
   async initialize(): Promise<void> {
     await this.collection.createIndex(
-      { channelId: 1, threadTs: 1 },
+      { threadId: 1 },
       {
-        name: "slack_thread_unique",
+        name: "chat_thread_unique",
         unique: true,
       },
     );
@@ -122,27 +124,15 @@ export class MongoThreadStore implements ThreadStore {
     );
   }
 
-  async get(
-    channelId: string,
-    threadTs: string,
-  ): Promise<ThreadRecord | null> {
+  async get(threadId: string): Promise<ThreadRecord | null> {
     await this.ensureInitialized();
-    const document = await this.collection.findOne({
-      _id: threadKey(channelId, threadTs),
-    });
-    if (!document) {
-      return null;
-    }
-    const { _id: _discarded, ...record } = document;
-    return record;
+    const document = await this.findOrMigrate(threadId);
+    return document ? withoutId(document) : null;
   }
 
   async put(record: ThreadRecord): Promise<void> {
     await this.ensureInitialized();
-    const document: StoredThreadRecord = {
-      _id: threadKey(record.channelId, record.threadTs),
-      ...record,
-    };
+    const document = withId(record);
     await this.collection.replaceOne(
       { _id: document._id },
       document,
@@ -151,31 +141,34 @@ export class MongoThreadStore implements ThreadStore {
   }
 
   async claimTurn(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     eventId: string,
     claimedAt: Date,
   ): Promise<TurnClaim> {
     await this.ensureInitialized();
-    const key = threadKey(channelId, threadTs);
-    const staleBefore = new Date(claimedAt.getTime() - TURN_LEASE_MS);
+    const key = threadKey(threadId);
+    const staleBefore = new Date(
+      claimedAt.getTime() - TURN_LEASE_MS,
+    );
+    await this.findOrMigrate(threadId);
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const existing = await this.collection.findOne({ _id: key });
       if (!existing) {
         const inserted: StoredThreadRecord = {
           _id: key,
-          channelId,
-          threadTs,
-          recentSlackEventIds: [eventId],
+          threadId,
+          recentEventIds: [eventId],
           inFlightEventId: eventId,
           inFlightStartedAt: claimedAt,
           updatedAt: claimedAt,
         };
         try {
           await this.collection.insertOne(inserted);
-          const { _id: _discarded, ...record } = inserted;
-          return { status: "claimed", record };
+          return {
+            status: "claimed",
+            record: withoutId(inserted),
+          };
         } catch (error) {
           if (isDuplicateKeyError(error)) {
             continue;
@@ -184,27 +177,28 @@ export class MongoThreadStore implements ThreadStore {
         }
       }
 
-      const status = turnConflictStatus(existing, eventId, staleBefore);
+      const status = turnConflictStatus(
+        existing,
+        eventId,
+        staleBefore,
+      );
       if (status) {
-        const { _id: _discarded, ...record } = existing;
-        return { status, record };
+        return { status, record: withoutId(existing) };
       }
 
       const updated = await this.collection.findOneAndUpdate(
         {
           _id: key,
-          recentSlackEventIds: { $ne: eventId },
+          recentEventIds: { $ne: eventId },
           $and: [
             {
               $or: [
                 { pendingInterruptId: { $exists: false } },
-                { pendingInterruptId: null },
               ],
             },
             {
               $or: [
                 { inFlightEventId: { $exists: false } },
-                { inFlightEventId: null },
                 { inFlightStartedAt: { $lt: staleBefore } },
               ],
             },
@@ -218,7 +212,7 @@ export class MongoThreadStore implements ThreadStore {
           },
           $unset: { retentionState: "" },
           $push: {
-            recentSlackEventIds: {
+            recentEventIds: {
               $each: [eventId],
               $slice: -RECENT_EVENT_LIMIT,
             },
@@ -227,20 +221,18 @@ export class MongoThreadStore implements ThreadStore {
         { returnDocument: "after" },
       );
       if (updated) {
-        const { _id: _discarded, ...record } = updated;
-        return { status: "claimed", record };
+        return { status: "claimed", record: withoutId(updated) };
       }
     }
 
     const current = await this.collection.findOne({ _id: key });
     if (!current) {
-      throw new Error("Could not claim Slack thread turn");
+      throw new Error("Could not claim chat thread turn");
     }
-    const { _id: _discarded, ...record } = current;
     return {
       status:
         turnConflictStatus(current, eventId, staleBefore) ?? "busy",
-      record,
+      record: withoutId(current),
     };
   }
 
@@ -251,30 +243,30 @@ export class MongoThreadStore implements ThreadStore {
     await this.ensureInitialized();
     const result = await this.collection.replaceOne(
       {
-        _id: threadKey(record.channelId, record.threadTs),
+        _id: threadKey(record.threadId),
         inFlightEventId: eventId,
       },
-      {
-        _id: threadKey(record.channelId, record.threadTs),
-        ...record,
-      },
+      withId(record),
       { upsert: false },
     );
     return result.matchedCount === 1;
   }
 
   async claimPendingReview(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     interruptId: string,
     claimedAt: Date,
   ): Promise<ThreadRecord | null> {
     await this.ensureInitialized();
+    await this.findOrMigrate(threadId);
     const document = await this.collection.findOneAndUpdate(
       {
-        _id: threadKey(channelId, threadTs),
+        _id: threadKey(threadId),
         pendingInterruptId: interruptId,
-        pendingReviewState: { $in: [null, "pending"] },
+        $or: [
+          { pendingReviewState: { $exists: false } },
+          { pendingReviewState: "pending" },
+        ],
       },
       {
         $set: {
@@ -285,11 +277,7 @@ export class MongoThreadStore implements ThreadStore {
       },
       { returnDocument: "after" },
     );
-    if (!document) {
-      return null;
-    }
-    const { _id: _discarded, ...record } = document;
-    return record;
+    return document ? withoutId(document) : null;
   }
 
   async replaceClaimedReview(
@@ -299,29 +287,26 @@ export class MongoThreadStore implements ThreadStore {
     await this.ensureInitialized();
     const result = await this.collection.replaceOne(
       {
-        _id: threadKey(record.channelId, record.threadTs),
+        _id: threadKey(record.threadId),
         pendingInterruptId: interruptId,
         pendingReviewState: "resuming",
       },
-      {
-        _id: threadKey(record.channelId, record.threadTs),
-        ...record,
-      },
+      withId(record),
       { upsert: false },
     );
     return result.matchedCount === 1;
   }
 
   async clearPendingDelivery(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     deliveryId: string,
     claimId: string,
   ): Promise<boolean> {
     await this.ensureInitialized();
+    await this.findOrMigrate(threadId);
     const document = await this.collection.findOneAndUpdate(
       {
-        _id: threadKey(channelId, threadTs),
+        _id: threadKey(threadId),
         "pendingDelivery.id": deliveryId,
         "pendingDelivery.claimId": claimId,
       },
@@ -335,19 +320,19 @@ export class MongoThreadStore implements ThreadStore {
   }
 
   async claimPendingDelivery(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     deliveryId: string,
     claimId: string,
     claimedAt: Date,
   ) {
     await this.ensureInitialized();
+    await this.findOrMigrate(threadId);
     const staleBefore = new Date(
       claimedAt.getTime() - DELIVERY_LEASE_MS,
     );
     const document = await this.collection.findOneAndUpdate(
       {
-        _id: threadKey(channelId, threadTs),
+        _id: threadKey(threadId),
         "pendingDelivery.id": deliveryId,
         $or: [
           { "pendingDelivery.state": { $in: [null, "pending"] } },
@@ -381,6 +366,76 @@ export class MongoThreadStore implements ThreadStore {
     this.initialization ??= this.initialize();
     await this.initialization;
   }
+
+  private async findOrMigrate(
+    threadId: string,
+  ): Promise<StoredThreadRecord | null> {
+    const key = threadKey(threadId);
+    const current = await this.collection.findOne({ _id: key });
+    const legacyKey = legacySlackThreadKey(threadId);
+    if (current) {
+      if (this.legacyCollection && legacyKey) {
+        await this.completeLegacyMigration(legacyKey, threadId);
+      }
+      return current;
+    }
+    if (!this.legacyCollection || !legacyKey) {
+      return null;
+    }
+    const legacy = await this.legacyCollection.findOneAndUpdate(
+      {
+        _id: legacyKey,
+        chatSdkMigrationState: { $ne: "complete" },
+      },
+      {
+        $set: {
+          chatSdkMigrationState: "copying",
+          chatSdkThreadId: threadId,
+        },
+      },
+      { returnDocument: "after" },
+    );
+    if (!legacy) {
+      return null;
+    }
+
+    const translated = withId(
+      translateLegacyRecord(threadId, legacy),
+    );
+    try {
+      await this.collection.insertOne(translated);
+      await this.completeLegacyMigration(legacyKey, threadId);
+      return translated;
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+      const raced = await this.collection.findOne({ _id: key });
+      if (raced) {
+        await this.completeLegacyMigration(legacyKey, threadId);
+      }
+      return raced;
+    }
+  }
+
+  private async completeLegacyMigration(
+    legacyKey: string,
+    threadId: string,
+  ): Promise<void> {
+    await this.legacyCollection?.updateOne(
+      {
+        _id: legacyKey,
+        chatSdkMigrationState: { $ne: "complete" },
+      },
+      {
+        $set: {
+          chatSdkMigratedAt: new Date(),
+          chatSdkMigrationState: "complete",
+          chatSdkThreadId: threadId,
+        },
+      },
+    );
+  }
 }
 
 function turnConflictStatus(
@@ -388,7 +443,7 @@ function turnConflictStatus(
   eventId: string,
   staleBefore: Date,
 ): Exclude<TurnClaim["status"], "claimed"> | null {
-  if (record.recentSlackEventIds?.includes(eventId)) {
+  if (record.recentEventIds?.includes(eventId)) {
     return "duplicate";
   }
   if (record.pendingInterruptId) {
@@ -402,6 +457,63 @@ function turnConflictStatus(
     return "busy";
   }
   return null;
+}
+
+function withId(record: ThreadRecord): StoredThreadRecord {
+  return Object.fromEntries(
+    Object.entries({
+      _id: threadKey(record.threadId),
+      ...record,
+    }).filter((entry) => entry[1] !== undefined),
+  ) as unknown as StoredThreadRecord;
+}
+
+function withoutId(document: StoredThreadRecord): ThreadRecord {
+  const { _id: _discarded, ...record } = document;
+  return record;
+}
+
+function legacySlackThreadKey(threadId: string): string | null {
+  const match = /^slack:([^:]+):([^:]+)$/.exec(threadId);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
+function translateLegacyRecord(
+  threadId: string,
+  legacy: LegacyStoredThreadRecord,
+): ThreadRecord {
+  const {
+    _id: _discarded,
+    channelId: _channelId,
+    chatSdkMigratedAt: _chatSdkMigratedAt,
+    chatSdkMigrationState: _chatSdkMigrationState,
+    chatSdkThreadId: _chatSdkThreadId,
+    threadTs: _threadTs,
+    recentSlackEventIds,
+    pendingRequestedBySlackUserId,
+    ...shared
+  } = legacy;
+  return {
+    ...shared,
+    threadId,
+    ...(recentSlackEventIds
+      ? {
+          recentEventIds: recentSlackEventIds.map((eventId) =>
+            eventId.includes(":")
+              ? eventId
+              : `slack:${eventId}`,
+          ),
+        }
+      : {}),
+    ...(pendingRequestedBySlackUserId
+      ? {
+          pendingRequestedByActorId:
+            pendingRequestedBySlackUserId.includes(":")
+              ? pendingRequestedBySlackUserId
+              : `slack:${pendingRequestedBySlackUserId}`,
+        }
+      : {}),
+  };
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

@@ -1,49 +1,151 @@
-import type { Receiver } from "@slack/bolt";
+import type { SlackAdapter } from "@chat-adapter/slack";
+import { Chat, type StateAdapter } from "chat";
 
+import { registerChatHandlers } from "./chat/handlers.js";
+import { platformActorId } from "./chat/identity.js";
+import type { AgentGateway } from "./chat/types.js";
 import {
-  createHttpModeApp,
-  createSocketModeApp,
-} from "./app.js";
-import type { SlackBotConfig } from "./config.js";
+  loadConfig,
+  type SlackBotConfig,
+} from "./config.js";
 import { MagentaClient } from "./magenta/client.js";
-import { MemoryThreadStore } from "./store/memoryThreadStore.js";
+import {
+  createSlackDeliveryBoundary,
+  createSlackPlatformAdapter,
+  parseSlackReviewInterruptId,
+  registerSlackPlatformHandlers,
+} from "./platforms/slack.js";
+import {
+  getSharedMongoConnection,
+  type MongoConnection,
+} from "./store/mongoConnection.js";
+import { MongoStateAdapter } from "./store/mongoState.js";
 import { MongoThreadStore } from "./store/mongoThreadStore.js";
 import type { ThreadStore } from "./store/threadStore.js";
 
-export async function createSocketRuntime(config: SlackBotConfig) {
-  const store: ThreadStore = config.store.mongoUri
-    ? await MongoThreadStore.connect(
-        config.store.mongoUri,
-        config.store.databaseName,
-      )
-    : new MemoryThreadStore();
-  const agent = new MagentaClient(config.agentic);
-  const app = createSocketModeApp(config, {
-    agent,
-    store,
-    displayName: config.slack.botDisplayName,
-    authorizedSlackUserIds: new Set(config.slack.allowedUserIds),
-  });
-  return { app, store };
+export type AtlasExplorerChat = Chat<{
+  slack: SlackAdapter;
+}>;
+
+export interface BotRuntime {
+  bot: AtlasExplorerChat;
+  slackAdapter: SlackAdapter;
+  state: StateAdapter;
+  store: ThreadStore;
 }
 
-export function createHttpRuntime(
-  config: SlackBotConfig,
-  receiver: Receiver,
-) {
-  if (!config.store.mongoUri) {
-    throw new Error("MONGODB_URI is required for the HTTP runtime");
+interface RuntimeOptions {
+  agent?: AgentGateway;
+  connection?: MongoConnection;
+  slackAdapter?: SlackAdapter;
+  state?: StateAdapter;
+  store?: ThreadStore;
+}
+
+let httpRuntime: Promise<BotRuntime> | undefined;
+
+export function getHttpRuntime(
+  environment: Record<string, string | undefined> = process.env,
+): Promise<BotRuntime> {
+  if (!httpRuntime) {
+    const pending = createRuntime(
+      loadConfig(environment, "http"),
+    ).catch((error) => {
+      if (httpRuntime === pending) {
+        httpRuntime = undefined;
+      }
+      throw error;
+    });
+    httpRuntime = pending;
   }
-  const store = MongoThreadStore.createLazy(
-    config.store.mongoUri,
-    config.store.databaseName,
-  );
-  const agent = new MagentaClient(config.agentic);
-  const app = createHttpModeApp(config, receiver, {
-    agent,
-    store,
-    displayName: config.slack.botDisplayName,
-    authorizedSlackUserIds: new Set(config.slack.allowedUserIds),
+  return httpRuntime;
+}
+
+export async function createRuntime(
+  config: SlackBotConfig,
+  options: RuntimeOptions = {},
+): Promise<BotRuntime> {
+  let connection = options.connection;
+  if (!options.state || !options.store) {
+    connection ??= await getSharedMongoConnection({
+      uri: config.store.mongoUri,
+      databaseName: config.store.databaseName,
+      allowEmbedded: config.mode === "socket",
+    });
+  }
+
+  const state =
+    options.state ??
+    new MongoStateAdapter({
+      client: connection!.client,
+      databaseName: config.store.databaseName,
+    });
+  const store =
+    options.store ??
+    MongoThreadStore.fromDatabase(connection!.database);
+  if (store instanceof MongoThreadStore) {
+    await store.initialize();
+  }
+
+  const slackAdapter =
+    options.slackAdapter ??
+    createSlackPlatformAdapter({
+      mode: config.mode === "http" ? "webhook" : "socket",
+      botToken: config.slack.botToken,
+      displayName: config.slack.botDisplayName,
+      ...(config.slack.appToken
+        ? { appToken: config.slack.appToken }
+        : {}),
+      ...(config.slack.signingSecret
+        ? { signingSecret: config.slack.signingSecret }
+        : {}),
+    });
+  const bot = new Chat({
+    adapters: { slack: slackAdapter },
+    concurrency: "concurrent",
+    state,
+    userName: config.slack.botDisplayName,
   });
-  return { app, store };
+  const delivery = createSlackDeliveryBoundary(slackAdapter);
+  registerChatHandlers(bot, {
+    agent: options.agent ?? new MagentaClient(config.agentic),
+    authorizedActorIds: normalizeAllowedActors(
+      config.chat.allowedActorIds,
+    ),
+    deliveryForAdapter: (adapter) =>
+      adapter.name === slackAdapter.name ? delivery : undefined,
+    reviewInterruptIdForAdapter: (
+      adapter,
+      value,
+      threadId,
+    ) =>
+      adapter.name === slackAdapter.name
+        ? parseSlackReviewInterruptId(value, threadId)
+        : value,
+    store,
+  });
+  registerSlackPlatformHandlers(
+    bot,
+    slackAdapter,
+    config.slack.botDisplayName,
+  );
+
+  return {
+    bot,
+    slackAdapter,
+    state,
+    store,
+  };
+}
+
+function normalizeAllowedActors(
+  actorIds: readonly string[],
+): ReadonlySet<string> {
+  return new Set(
+    actorIds.map((actorId) =>
+      actorId.includes(":")
+        ? actorId
+        : platformActorId("slack", actorId),
+    ),
+  );
 }

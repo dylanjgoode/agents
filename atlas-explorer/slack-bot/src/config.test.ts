@@ -7,7 +7,7 @@ const sharedEnv = {
   AGENTIC_API_KEY: "agp_test",
   AGENTIC_PROJECT_ID: "project-1",
   AGENTIC_WORKSPACE_ID: "workspace-1",
-  SLACK_ALLOWED_USER_IDS: "U123",
+  CHAT_ALLOWED_USER_IDS: "slack:U123",
 };
 
 describe("loadConfig", () => {
@@ -22,9 +22,11 @@ describe("loadConfig", () => {
 
     expect(config).toEqual({
       mode: "socket",
+      chat: {
+        allowedActorIds: ["slack:U123"],
+      },
       slack: {
         appToken: "xapp-test",
-        allowedUserIds: ["U123"],
         botDisplayName: "AtlasExplorer",
         botToken: "xoxb-test",
       },
@@ -47,25 +49,59 @@ describe("loadConfig", () => {
     );
   });
 
-  it("requires and parses an explicit Slack user allowlist in HTTP mode", () => {
+  it("requires and parses a platform-qualified chat allowlist", () => {
     const httpEnv = {
       ...sharedEnv,
       SLACK_SIGNING_SECRET: "signing-secret",
       MONGODB_URI: "mongodb://localhost:27017",
-      SLACK_ALLOWED_USER_IDS: undefined,
+      CHAT_ALLOWED_USER_IDS: undefined,
     };
     expect(() => loadConfig(httpEnv, "http")).toThrow(
-      /SLACK_ALLOWED_USER_IDS/,
+      /CHAT_ALLOWED_USER_IDS/,
     );
 
     const config = loadConfig(
       {
         ...httpEnv,
-        SLACK_ALLOWED_USER_IDS: " U123, U456 ,U123 ",
+        CHAT_ALLOWED_USER_IDS:
+          " slack:U123, discord:U456 ,slack:U123 ",
       },
       "http",
     );
-    expect(config.slack.allowedUserIds).toEqual(["U123", "U456"]);
+    expect(config.chat.allowedActorIds).toEqual([
+      "slack:U123",
+      "discord:U456",
+    ]);
+  });
+
+  it("translates the legacy Slack allowlist when the chat allowlist is absent", () => {
+    const config = loadConfig(
+      {
+        ...sharedEnv,
+        CHAT_ALLOWED_USER_IDS: undefined,
+        SLACK_ALLOWED_USER_IDS: " U123, U456 ,U123 ",
+        SLACK_APP_TOKEN: "xapp-test",
+      },
+      "socket",
+    );
+
+    expect(config.chat.allowedActorIds).toEqual([
+      "slack:U123",
+      "slack:U456",
+    ]);
+  });
+
+  it("rejects unqualified IDs in the new cross-platform allowlist", () => {
+    expect(() =>
+      loadConfig(
+        {
+          ...sharedEnv,
+          CHAT_ALLOWED_USER_IDS: "U123",
+          SLACK_APP_TOKEN: "xapp-test",
+        },
+        "socket",
+      ),
+    ).toThrow(/platform-qualified/i);
   });
 
   it("normalizes an Agentic base URL before requests are built", () => {
@@ -85,7 +121,7 @@ describe("loadConfig", () => {
     const config = loadConfig(
       {
         SLACK_BOT_TOKEN: "xoxb-test",
-        SLACK_ALLOWED_USER_IDS: "U123",
+        CHAT_ALLOWED_USER_IDS: "slack:U123",
         SLACK_APP_TOKEN: "xapp-test",
         AGENTIC_INVOKE_TARGET: "local",
         AGENTIC_BASE_URL: "",

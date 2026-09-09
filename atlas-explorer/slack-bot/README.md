@@ -1,10 +1,16 @@
-# AtlasExplorer Slack Bot
+# AtlasExplorer Chat Bot
 
-`@AtlasExplorer` is a Slack client for the existing
-[Magenta Atlas Explorer agent](../agents/atlas-explorer). The bot does not run
-LangGraph, MCP, or Atlas credentials. It sends Slack messages to the Agentic
-Platform invocation API, maps Slack threads to Agentic sessions, and presents
-Approve/Reject controls when Atlas Explorer suspends for human review.
+`@AtlasExplorer` is a [Vercel Chat SDK](https://chat-sdk.dev) client for the
+existing [Magenta Atlas Explorer agent](../agents/atlas-explorer). Shared
+handlers contain the conversation, delivery, and human-review behavior; the
+official `@chat-adapter/slack` package contains Slack transport behavior. This
+keeps the core ready for another Chat SDK adapter without duplicating the
+Agentic workflow.
+
+The bot does not run LangGraph, MCP, or Atlas credentials. It sends normalized
+chat messages to the Agentic Platform invocation API, maps Chat SDK threads to
+Agentic sessions, and presents portable Approve/Reject cards when Atlas
+Explorer suspends for human review.
 
 The initial integration uses the Magenta workspace's shared Atlas MCP identity.
 Every allowlisted Slack user therefore has the same Atlas access as that
@@ -16,8 +22,9 @@ workspace; access is not scoped to each user's Atlas identity.
 - A Slack workspace where you can create and install an app
 - Either a deployed Atlas Explorer workspace and Agentic Platform API key, or
   a local Atlas Explorer `agentic dev` stack
-- For Vercel only, MongoDB 5.0+ for persistent thread mappings and partial TTL
-  retention indexes
+- MongoDB 5.0+ in production for Chat SDK state, durable workflow state, and
+  partial TTL retention indexes. Local Socket Mode can start an ephemeral
+  MongoDB automatically.
 
 Configure and verify the Atlas Explorer agent first. Its
 [README](../agents/atlas-explorer/README.md) covers MCP and model secrets.
@@ -42,9 +49,10 @@ the current `session_id` invocation contract before Slack is involved.
    Socket Mode.
 3. Install the app to the workspace and copy its **Bot User OAuth Token** as
    `SLACK_BOT_TOKEN`.
-4. Copy `.env.example` to `.env` and set the Slack and Agentic target values. Set
-   `SLACK_ALLOWED_USER_IDS` to the comma-separated Slack member IDs of trusted
-   operators (copy each member ID from the Slack profile menu).
+4. Copy `.env.example` to `.env` and set the Slack and Agentic target values.
+   Set `CHAT_ALLOWED_USER_IDS` to comma-separated, platform-qualified IDs such
+   as `slack:U0123456789` for trusted operators (copy each member ID from the
+   Slack profile menu).
 
 The manifest requests message/history access for DMs, public channels, and
 private channels. Add the app to each channel where users will mention it.
@@ -61,8 +69,11 @@ pnpm typecheck
 pnpm start
 ```
 
-`MONGODB_URI` is optional locally. Without it, thread mappings live in memory
-for 24 hours and reset when the process restarts. You can then:
+`MONGODB_URI` is optional locally. Without it,
+`mongodb-memory-server-core` starts an ephemeral MongoDB process. Chat SDK
+subscriptions, locks, deduplication, queues, and Agentic workflow records all
+use the same production MongoDB implementations. The embedded database stops
+and its data disappears during graceful shutdown. You can then:
 
 - DM `@AtlasExplorer`; each top-level DM starts a new conversation.
 - Mention `@AtlasExplorer` in a channel; the response starts a thread.
@@ -72,7 +83,7 @@ By default, the local bot invokes a deployed Magenta workspace. The Atlas MCP
 client credentials remain configured on Magenta and never enter the Slack bot
 environment.
 
-`SLACK_ALLOWED_USER_IDS` is required in both Socket and HTTP modes. The bot
+`CHAT_ALLOWED_USER_IDS` is required in both Socket and HTTP modes. The bot
 refuses to start without an explicit allowlist because every permitted user
 acts through the Magenta workspace's shared Atlas identity.
 
@@ -110,7 +121,7 @@ credentials come from the agent's local `.env`.
 2. Enable Fluid Compute and set these environment variables:
    - `SLACK_BOT_TOKEN`
    - `SLACK_SIGNING_SECRET`
-   - `SLACK_ALLOWED_USER_IDS`
+   - `CHAT_ALLOWED_USER_IDS` (for example, `slack:U0123456789`)
    - `AGENTIC_INVOKE_TARGET` (`gateway`)
    - `AGENTIC_BASE_URL`
    - `AGENTIC_API_KEY`
@@ -118,19 +129,24 @@ credentials come from the agent's local `.env`.
    - `AGENTIC_WORKSPACE_ID`
    - `MONGODB_URI`
    - `THREAD_STORE_DB` (optional; defaults to `atlas_explorer_slack`)
-3. Deploy, then replace every `https://example.com/api/slack/events` URL in the
-   Slack manifest with `https://<your-vercel-domain>/api/slack/events`.
+3. Deploy, then replace every `https://example.com/api/webhooks/slack` URL in
+   the Slack manifest with
+   `https://<your-vercel-domain>/api/webhooks/slack`.
 4. Set `settings.socket_mode_enabled` to `false`, save the Slack app changes,
    and reinstall the app if Slack requests it.
 
-The Vercel handler uses `@vercel/slack-bolt` so Slack is acknowledged within
-three seconds while Magenta work continues through `waitUntil`. Its maximum
-duration is 300 seconds. Vercel always uses the MongoDB thread store because
-serverless memory does not survive cold starts. Completed inactive mappings
-expire after 30 days, and an undelivered response is retained for up to 24
-hours. Records with pending reviews or active work are excluded from
-expiration. Treat long-lived pending or uncertain reviews as operational
-alerts: verify Agentic/Atlas state before archiving those records.
+The thin Vercel handler passes the untouched request to
+`bot.webhooks.slack` and supplies Vercel's `waitUntil`, so the official adapter
+can acknowledge Slack quickly while Magenta work continues. Its maximum
+duration is 300 seconds. Vercel requires `MONGODB_URI`; the embedded server can
+never start in production. One cached MongoDB client backs both Chat SDK state
+and Agentic workflow state across warm invocations.
+
+Completed inactive workflow mappings expire after 30 days, and an undelivered
+response is retained for up to 24 hours. Records with pending reviews or
+active work are excluded from expiration. Treat long-lived pending or
+uncertain reviews as operational alerts: verify Agentic/Atlas state before
+archiving those records.
 
 Allow Vercel to reach the thread-store MongoDB deployment. Atlas MCP network
 allowlisting is separate: MCP runs from Magenta, so allow the Magenta runtime's
@@ -140,14 +156,41 @@ egress addresses rather than Vercel's addresses.
 
 Mutative Atlas Explorer tools suspend with an `agent_interrupt`. The bot stores
 the Agentic `session_id`, execution ID, all pending interrupts, and resume
-schema, then posts Approve and Reject buttons. Only an allowlisted Slack user
-who requested the operation can decide it. New text is blocked while review is
-pending.
+schema, then posts Approve and Reject buttons. Only the allowlisted actor who
+requested the operation can decide it. The signed Chat SDK action supplies
+the actor and thread identity; button values contain only the interrupt ID. New
+text is blocked while review is pending.
 
 Both buttons continue the same session by sending a `resume_map` keyed by the
 pending interrupt IDs. The bot does not use the generic execution `/resume`
 endpoint. An unconfirmed resume is marked uncertain and is never
 automatically replayed; verify Atlas state before starting a new conversation.
+
+## Add another chat platform
+
+Register another Chat SDK adapter in `src/runtime.ts`, add its
+platform-qualified actors to `CHAT_ALLOWED_USER_IDS`, and provide a delivery
+boundary only for capabilities that are genuinely platform-specific. The
+handlers under `src/chat/` already cover mentions, direct messages, subscribed
+follow-ups, cards, approvals, session continuity, and delivery recovery.
+
+Slack-specific behavior is limited to `src/platforms/slack.ts`: Agent View,
+suggested prompts, App Home, Socket Mode configuration, response-size handling,
+and metadata-based delivery reconciliation. Adapters without durable message
+metadata use the shared conservative fallback and never assume an ambiguous
+delivery failed.
+
+## Migration compatibility
+
+`SLACK_ALLOWED_USER_IDS` remains accepted when `CHAT_ALLOWED_USER_IDS` is
+absent; its member IDs are translated to `slack:<member-id>`. The new variable
+takes precedence when both are set.
+
+Existing records in the `slack_threads` collection are copied lazily into the
+platform-neutral `chat_threads` collection on first thread activity. Session
+IDs, pending reviews, requesters, recent events, and pending deliveries survive
+the cutover. Keep the old collection until every active thread has either been
+accessed or aged beyond its retention period.
 
 ## Development checks
 
@@ -155,8 +198,8 @@ automatically replayed; verify Atlas state before starting a new conversation.
 pnpm test
 pnpm typecheck
 pnpm build
-pnpm peers check
 ```
 
-Tests mock external HTTP and Slack boundaries; they do not require a Slack
-workspace, Magenta deployment, Docker, or MongoDB server.
+Tests mock external HTTP and Slack boundaries and start a test-scoped
+`MongoMemoryServer`; they do not require a Slack workspace, Magenta deployment,
+Docker, or separately managed MongoDB server.

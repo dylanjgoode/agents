@@ -1,10 +1,11 @@
 import "dotenv/config";
 
 import { loadConfig } from "./config.js";
-import { createSocketRuntime } from "./runtime.js";
+import { createRuntime } from "./runtime.js";
+import { closeSharedMongoConnection } from "./store/mongoConnection.js";
 
 const config = loadConfig(process.env, "socket");
-const { app, store } = await createSocketRuntime(config);
+const { bot } = await createRuntime(config);
 
 let stopping = false;
 async function shutdown(): Promise<void> {
@@ -12,7 +13,8 @@ async function shutdown(): Promise<void> {
     return;
   }
   stopping = true;
-  await Promise.allSettled([app.stop(), store.close()]);
+  await bot.shutdown();
+  await closeSharedMongoConnection();
 }
 
 process.once("SIGINT", () => {
@@ -23,11 +25,14 @@ process.once("SIGTERM", () => {
 });
 
 try {
-  await app.start();
+  await bot.initialize();
   console.log(
     `⚡️ ${config.slack.botDisplayName} is running in Slack Socket Mode`,
   );
 } catch (error) {
-  await store.close();
+  await Promise.allSettled([
+    bot.shutdown(),
+    closeSharedMongoConnection(),
+  ]);
   throw error;
 }

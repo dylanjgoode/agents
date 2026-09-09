@@ -1,4 +1,4 @@
-import type { KnownBlock } from "@slack/types";
+import type { AdapterPostableMessage } from "chat";
 
 import type {
   InvocationProgress,
@@ -10,14 +10,13 @@ import type {
 import type { ThreadStore } from "../store/threadStore.js";
 import type {
   AgentGateway,
-  SlackPublisher,
-} from "./handleUserMessage.js";
+  ConversationSurface,
+  DeliveryStatus,
+} from "./types.js";
 
 export class FakeAgentGateway implements AgentGateway {
   invokeInputs: InvokeInput[] = [];
-  invokeStreamInputs: InvokeInput[] = [];
   resumeInputs: ResumeInput[] = [];
-  resumeStreamInputs: ResumeInput[] = [];
   progressEvents: InvocationProgress[] = [];
   invokeResult!: InvocationResult;
   resumeResult!: InvocationResult;
@@ -41,7 +40,6 @@ export class FakeAgentGateway implements AgentGateway {
     onProgress?: InvocationProgressHandler,
   ): Promise<InvocationResult> {
     this.invokeInputs.push(input);
-    this.invokeStreamInputs.push(input);
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }
@@ -53,7 +51,6 @@ export class FakeAgentGateway implements AgentGateway {
     onProgress?: InvocationProgressHandler,
   ): Promise<InvocationResult> {
     this.resumeInputs.push(input);
-    this.resumeStreamInputs.push(input);
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }
@@ -64,47 +61,55 @@ export class FakeAgentGateway implements AgentGateway {
   }
 }
 
-export class FakePublisher implements SlackPublisher {
+export class FakeConversation implements ConversationSurface {
   statuses: string[] = [];
-  messages: Array<{ text: string; blocks?: KnownBlock[] }> = [];
+  messages: AdapterPostableMessage[] = [];
   agentResponses: string[] = [];
-  agentResponseDeliveryIds = new Set<string>();
-  agentResponseAttempts = 0;
-  agentResponseError?: Error;
-  acceptAgentResponseBeforeError = false;
-  agentResponseGate?: Promise<void>;
-  updateReviewStatus?: SlackPublisher["updateReviewStatus"];
+  deliveryIds = new Set<string>();
+  deliveryAttempts = 0;
+  deliveryError?: Error;
+  acceptDeliveryBeforeError = false;
+  deliveryGate?: Promise<void>;
+  unknownDeliveryStatus = false;
+  reviewStatuses: Array<"approved" | "rejected" | "uncertain"> = [];
 
   async setStatus(status: string): Promise<void> {
     this.statuses.push(status);
   }
 
-  async postMessage(message: {
-    text: string;
-    blocks?: KnownBlock[];
-  }): Promise<void> {
+  async post(message: AdapterPostableMessage): Promise<void> {
     this.messages.push(message);
   }
 
-  async postAgentResponse(
-    text: string,
-    deliveryId: string,
-  ): Promise<void> {
-    this.agentResponseAttempts += 1;
-    await this.agentResponseGate;
-    if (this.agentResponseError) {
-      if (this.acceptAgentResponseBeforeError) {
+  async deliver(text: string, deliveryId: string): Promise<void> {
+    this.deliveryAttempts += 1;
+    await this.deliveryGate;
+    if (this.deliveryError) {
+      if (this.acceptDeliveryBeforeError) {
         this.agentResponses.push(text);
-        this.agentResponseDeliveryIds.add(deliveryId);
+        this.deliveryIds.add(deliveryId);
       }
-      throw this.agentResponseError;
+      throw this.deliveryError;
     }
     this.agentResponses.push(text);
-    this.agentResponseDeliveryIds.add(deliveryId);
+    this.deliveryIds.add(deliveryId);
   }
 
-  async hasAgentResponse(deliveryId: string): Promise<boolean> {
-    return this.agentResponseDeliveryIds.has(deliveryId);
+  async getDeliveryStatus(
+    deliveryId: string,
+  ): Promise<DeliveryStatus> {
+    if (this.unknownDeliveryStatus) {
+      return "unknown";
+    }
+    return this.deliveryIds.has(deliveryId)
+      ? "delivered"
+      : "not_delivered";
+  }
+
+  async updateReviewStatus(
+    status: "approved" | "rejected" | "uncertain",
+  ): Promise<void> {
+    this.reviewStatuses.push(status);
   }
 }
 
@@ -148,8 +153,7 @@ export async function seedPendingReview(
   store: ThreadStore,
 ): Promise<void> {
   await store.put({
-    channelId: "C123",
-    threadTs: "1720000000.000100",
+    threadId: "slack:C123:1720000000.000100",
     magentaSessionId: "session-1",
     pendingExecutionId: "execution-2",
     pendingInterruptId: "interrupt-1",
@@ -158,7 +162,7 @@ export async function seedPendingReview(
       { name: "mongodb__insert_many", args: { count: 1 } },
       { name: "mongodb__create_index", args: { name: "sku_1" } },
     ],
-    pendingRequestedBySlackUserId: "U123",
+    pendingRequestedByActorId: "slack:U123",
     updatedAt: new Date(),
   });
 }
