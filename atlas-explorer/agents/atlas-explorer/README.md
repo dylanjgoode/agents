@@ -92,6 +92,13 @@ agentic dev up
 Open the playground at http://localhost:3000. Stop the stack with
 `agentic dev stop`.
 
+## Talk from Slack
+
+The sibling [`@AtlasExplorer` Slack bot](../../slack-bot) invokes this same
+Magenta workspace and preserves Agentic sessions per Slack thread. It supports
+local Socket Mode, Vercel deployment, and Approve/Reject controls for this
+agent's mutation interrupts.
+
 ## What to try
 
 - Ask it to list databases or inspect a collection schema. Read-only MCP tools

@@ -1,0 +1,84 @@
+{
+  "display_information": {
+    "name": "AtlasExplorer",
+    "description": "Explore MongoDB Atlas data with the Magenta Atlas Explorer agent",
+    "background_color": "#001E2B"
+  },
+  "features": {
+    "agent_view": {
+      "agent_description": "Explore MongoDB databases and Atlas resources.",
+      "suggested_prompts": [
+        {
+          "title": "List Atlas projects",
+          "message": "List the Atlas projects I can access."
+        },
+        {
+          "title": "Inspect a database",
+          "message": "Help me inspect the databases and collections on my Atlas clusters."
+        },
+        {
+          "title": "Explain a query",
+          "message": "Help me understand and optimize a MongoDB query plan."
+        }
+      ]
+    },
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "bot_user": {
+      "display_name": "AtlasExplorer",
+      "always_online": true
+    }
+  },
+  "metadata": {
+    "event_subscriptions": [
+      {
+        "event_type": "atlas_explorer_responded",
+        "schema": {
+          "type": "object",
+          "required": ["delivery_id"],
+          "properties": {
+            "delivery_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "assistant:write",
+        "channels:history",
+        "chat:write",
+        "groups:history",
+        "im:history",
+        "im:read",
+        "im:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://example.com/api/slack/events",
+      "bot_events": [
+        "app_home_opened",
+        "app_mention",
+        "message.channels",
+        "message.groups",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://example.com/api/slack/events"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}
