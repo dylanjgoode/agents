@@ -6,10 +6,6 @@ on:
       working-directory:
         required: true
         type: string
-      cache-mongodb-binaries:
-        required: false
-        type: boolean
-        default: false
       private-git-deps:
         required: false
         type: boolean
@@ -28,8 +24,6 @@ jobs:
     timeout-minutes: 20
     env:
       COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-      COREPACK_ENABLE_STRICT: "0"
-      NPM_CONFIG_PACKAGE_MANAGER_STRICT: "false"
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -45,7 +39,7 @@ jobs:
             echo "::error::Set repository secret MAGENTA_GITHUB_TOKEN to a PAT with read access to 10gen/magenta-client-libraries. github.token cannot clone that repository because it lives in a different GitHub org."
             exit 1
           fi
-          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${TOKEN}@github.com/10gen/".insteadOf "https://github.com/10gen/"
 
       - uses: actions/setup-node@v7
         with:
@@ -54,7 +48,7 @@ jobs:
       - name: Enable pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@11.25.0 --activate
+          corepack install
 
       - name: Get pnpm store directory
         run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
@@ -67,7 +61,6 @@ jobs:
             pnpm-${{ runner.os }}-
 
       - uses: actions/cache@v6
-        if: inputs.cache-mongodb-binaries
         with:
           path: ~/.cache/mongodb-binaries
           key: mongodb-memory-server-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
@@ -76,6 +69,9 @@ jobs:
 
       - name: Install dependencies
         env:
+          # Magenta git packages pin npm. Keep their checkouts out of this
+          # package tree so preferred-pm does not walk up to packageManager pnpm
+          # and run pnpm install inside them.
           TMPDIR: ${{ runner.temp }}
         run: pnpm install --frozen-lockfile
 

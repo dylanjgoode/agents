@@ -27,4 +27,3 @@ jobs:
     uses: ./.github/workflows/unit-tests.yml
     with:
       working-directory: atlas-explorer/slack-bot
-      cache-mongodb-binaries: true
