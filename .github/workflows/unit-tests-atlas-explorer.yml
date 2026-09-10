@@ -1,0 +1,24 @@
+name: Atlas Explorer unit tests
+
+on:
+  pull_request:
+    paths:
+      - "atlas-explorer/agents/atlas-explorer/**"
+      - ".github/workflows/unit-tests.yml"
+      - ".github/workflows/unit-tests-atlas-explorer.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "atlas-explorer/agents/atlas-explorer/**"
+      - ".github/workflows/unit-tests.yml"
+      - ".github/workflows/unit-tests-atlas-explorer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/unit-tests.yml
+    with:
+      working-directory: atlas-explorer/agents/atlas-explorer
