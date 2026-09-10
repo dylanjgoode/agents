@@ -10,6 +10,13 @@ on:
         required: false
         type: boolean
         default: false
+      private-git-deps:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      MAGENTA_GITHUB_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -26,9 +33,15 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Allow git to fetch internal GitHub dependencies
-        run: git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+        if: inputs.private-git-deps
         env:
-          TOKEN: ${{ github.token }}
+          TOKEN: ${{ secrets.MAGENTA_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Set repository secret MAGENTA_GITHUB_TOKEN to a PAT with read access to 10gen/magenta-client-libraries. github.token cannot clone that repository because it lives in a different GitHub org."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - uses: pnpm/action-setup@v6
         with:
