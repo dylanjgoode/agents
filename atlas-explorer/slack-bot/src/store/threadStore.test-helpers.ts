@@ -3,27 +3,26 @@ import { expect } from "vitest";
 import type { ThreadRecord, ThreadStore } from "./threadStore.js";
 
 export const baseRecord: Omit<ThreadRecord, "updatedAt"> = {
-  channelId: "C123",
-  threadTs: "1720000000.000100",
+  threadId: "slack:C123:1720000000.000100",
   magentaSessionId: "session-1",
 };
 
 export async function exercisesRoundTrip(
   store: ThreadStore,
 ): Promise<void> {
-  const record = {
+  const record: ThreadRecord = {
     ...baseRecord,
     pendingExecutionId: "execution-1",
     pendingInterruptId: "interrupt-1",
     pendingResumeSchema: { type: "object" },
-    pendingRequestedBySlackUserId: "U123",
+    pendingRequestedByActorId: "slack:U123",
     updatedAt: new Date("2026-09-08T12:00:00.000Z"),
   };
 
   await store.put(record);
 
-  expect(await store.get(record.channelId, record.threadTs)).toEqual(record);
-  expect(await store.get("C-other", record.threadTs)).toBeNull();
+  expect(await store.get(record.threadId)).toEqual(record);
+  expect(await store.get("slack:C-other:1")).toBeNull();
 }
 
 export async function exercisesReviewClaim(
@@ -39,14 +38,12 @@ export async function exercisesReviewClaim(
 
   const claims = await Promise.all([
     store.claimPendingReview(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "interrupt-1",
       new Date("2026-09-08T12:01:00.000Z"),
     ),
     store.claimPendingReview(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "interrupt-1",
       new Date("2026-09-08T12:01:00.000Z"),
     ),
@@ -57,6 +54,7 @@ export async function exercisesReviewClaim(
     pendingInterruptId: "interrupt-1",
     pendingReviewState: "resuming",
   });
+
   await store.put({
     ...baseRecord,
     pendingExecutionId: "execution-2",
@@ -72,15 +70,12 @@ export async function exercisesReviewClaim(
   ).toBe(false);
   expect(
     await store.claimPendingReview(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "stale-interrupt",
       new Date(),
     ),
   ).toBeNull();
-  await expect(
-    store.get(baseRecord.channelId, baseRecord.threadTs),
-  ).resolves.toMatchObject({
+  await expect(store.get(baseRecord.threadId)).resolves.toMatchObject({
     pendingInterruptId: "interrupt-2",
   });
 }
@@ -90,14 +85,12 @@ export async function exercisesTurnClaim(
 ): Promise<void> {
   const [first, duplicate] = await Promise.all([
     store.claimTurn(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "event-1",
       new Date("2026-09-08T12:00:00.000Z"),
     ),
     store.claimTurn(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "event-1",
       new Date("2026-09-08T12:00:00.000Z"),
     ),
@@ -110,15 +103,14 @@ export async function exercisesTurnClaim(
   expect(
     (
       await store.claimTurn(
-        baseRecord.channelId,
-        baseRecord.threadTs,
+        baseRecord.threadId,
         "event-2",
         new Date("2026-09-08T12:01:00.000Z"),
       )
     ).status,
   ).toBe("busy");
 
-  const active = await store.get(baseRecord.channelId, baseRecord.threadTs);
+  const active = await store.get(baseRecord.threadId);
   expect(active).not.toBeNull();
   await store.put({
     ...active!,
@@ -126,8 +118,7 @@ export async function exercisesTurnClaim(
     inFlightStartedAt: undefined,
   });
   const next = await store.claimTurn(
-    baseRecord.channelId,
-    baseRecord.threadTs,
+    baseRecord.threadId,
     "event-2",
     new Date("2026-09-08T12:02:00.000Z"),
   );
@@ -151,9 +142,7 @@ export async function exercisesTurnClaim(
       updatedAt: new Date("2026-09-08T12:02:01.000Z"),
     }),
   ).toBe(true);
-  await expect(
-    store.get(baseRecord.channelId, baseRecord.threadTs),
-  ).resolves.toMatchObject({
+  await expect(store.get(baseRecord.threadId)).resolves.toMatchObject({
     magentaSessionId: "current-session",
   });
 }
@@ -173,15 +162,13 @@ export async function exercisesDeliveryCompletion(
 
   const claims = await Promise.all([
     store.claimPendingDelivery(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "delivery-1",
       "claim-1",
       new Date("2026-09-08T12:01:00.000Z"),
     ),
     store.claimPendingDelivery(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "delivery-1",
       "claim-2",
       new Date("2026-09-08T12:01:00.000Z"),
@@ -192,15 +179,13 @@ export async function exercisesDeliveryCompletion(
   expect(claimed.state).toBe("sending");
   expect(
     await store.clearPendingDelivery(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "delivery-1",
       claimed.claimId === "claim-1" ? "claim-2" : "claim-1",
     ),
   ).toBe(false);
   const reclaimed = await store.claimPendingDelivery(
-    baseRecord.channelId,
-    baseRecord.threadTs,
+    baseRecord.threadId,
     "delivery-1",
     "claim-3",
     new Date("2026-09-08T12:07:00.000Z"),
@@ -211,23 +196,19 @@ export async function exercisesDeliveryCompletion(
   });
   expect(
     await store.clearPendingDelivery(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "delivery-1",
       claimed.claimId!,
     ),
   ).toBe(false);
   expect(
     await store.clearPendingDelivery(
-      baseRecord.channelId,
-      baseRecord.threadTs,
+      baseRecord.threadId,
       "delivery-1",
       "claim-3",
     ),
   ).toBe(true);
-  await expect(
-    store.get(baseRecord.channelId, baseRecord.threadTs),
-  ).resolves.toEqual(
+  await expect(store.get(baseRecord.threadId)).resolves.toEqual(
     expect.not.objectContaining({
       pendingDelivery: expect.anything(),
     }),

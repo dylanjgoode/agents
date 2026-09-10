@@ -54,7 +54,7 @@ describe("MagentaClient", () => {
     await expect(
       client.invoke({
         message: "List projects",
-        slackUserId: "U123",
+        actorId: "slack:U123",
       }),
     ).resolves.toEqual({
       kind: "completed",
@@ -73,7 +73,7 @@ describe("MagentaClient", () => {
     });
     expect(JSON.parse(String(init?.body))).toEqual({
       message: "List projects",
-      user_id: "U123",
+      user_id: "slack:U123",
     });
   });
 
@@ -98,7 +98,7 @@ describe("MagentaClient", () => {
     await expect(
       client.invoke({
         message: "List projects",
-        slackUserId: "U123",
+        actorId: "slack:U123",
       }),
     ).resolves.toEqual({
       kind: "completed",
@@ -129,7 +129,7 @@ describe("MagentaClient", () => {
     await expect(
       client.invoke({
         message: "List projects",
-        slackUserId: "U123",
+        actorId: "slack:U123",
       }),
     ).resolves.toEqual({
       kind: "completed",
@@ -142,7 +142,7 @@ describe("MagentaClient", () => {
     );
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
       message: "List projects",
-      user_id: "U123",
+      user_id: "slack:U123",
       wait: true,
     });
     expect(fetchFn.mock.calls[0]?.[1]?.headers).toEqual({
@@ -193,7 +193,7 @@ describe("MagentaClient", () => {
 
     await expect(
       client.invokeStream(
-        { message: "List projects", slackUserId: "U123" },
+        { message: "List projects", actorId: "slack:U123" },
         (event) => {
           progress.push(event);
         },
@@ -209,7 +209,7 @@ describe("MagentaClient", () => {
     );
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
       message: "List projects",
-      user_id: "U123",
+      user_id: "slack:U123",
     });
     expect(progress).toEqual([
       {
@@ -238,7 +238,7 @@ describe("MagentaClient", () => {
     const client = new MagentaClient(config, { fetchFn });
 
     await client.invokeStream(
-      { message: "List projects", slackUserId: "U123" },
+      { message: "List projects", actorId: "slack:U123" },
       () => undefined,
     );
 
@@ -280,7 +280,7 @@ describe("MagentaClient", () => {
 
     await expect(
       client.invokeStream(
-        { message: "Insert an item", slackUserId: "U123" },
+        { message: "Insert an item", actorId: "slack:U123" },
         () => undefined,
       ),
     ).resolves.toEqual({
@@ -319,7 +319,7 @@ describe("MagentaClient", () => {
 
     await expect(
       client.invokeStream(
-        { message: "List projects", slackUserId: "U123" },
+        { message: "List projects", actorId: "slack:U123" },
         () => undefined,
       ),
     ).rejects.toMatchObject({
@@ -353,7 +353,7 @@ describe("MagentaClient", () => {
     await client.resumeStream(
       {
         sessionId: "stream-session",
-        slackUserId: "U123",
+        actorId: "slack:U123",
         interruptId: "interrupt-1",
         decision: { type: "approve" },
       },
@@ -365,7 +365,7 @@ describe("MagentaClient", () => {
     );
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
       session_id: "stream-session",
-      user_id: "U123",
+      user_id: "slack:U123",
       resume_map: {
         "interrupt-1": {
           decisions: [{ type: "approve" }],
@@ -395,14 +395,14 @@ describe("MagentaClient", () => {
 
     await client.resume({
       sessionId: "local-session",
-      slackUserId: "U123",
+      actorId: "slack:U123",
       interruptId: "interrupt-1",
       decision: { type: "approve" },
     });
 
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
       session_id: "local-session",
-      user_id: "U123",
+      user_id: "slack:U123",
       wait: true,
       resume_map: {
         "interrupt-1": {
@@ -427,7 +427,7 @@ describe("MagentaClient", () => {
     await client.invoke({
       message: "What about the first one?",
       sessionId: "session-1",
-      slackUserId: "U123",
+      actorId: "slack:U123",
     });
 
     const [, init] = fetchFn.mock.calls[0]!;
@@ -439,7 +439,7 @@ describe("MagentaClient", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       message: "What about the first one?",
       session_id: "session-1",
-      user_id: "U123",
+      user_id: "slack:U123",
     });
   });
 
@@ -485,7 +485,7 @@ describe("MagentaClient", () => {
     await expect(
       client.invoke({
         message: "Insert this item",
-        slackUserId: "U123",
+        actorId: "slack:U123",
       }),
     ).resolves.toEqual({
       kind: "suspended",
@@ -527,13 +527,13 @@ describe("MagentaClient", () => {
       sessionId: "session-1",
       interruptId: "interrupt-1",
       decision: { type: "approve" },
-      slackUserId: "U123",
+      actorId: "slack:U123",
     });
 
     const [, init] = fetchFn.mock.calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({
       session_id: "session-1",
-      user_id: "U123",
+      user_id: "slack:U123",
       resume_map: {
         "interrupt-1": {
           decisions: [{ type: "approve" }],
@@ -567,7 +567,7 @@ describe("MagentaClient", () => {
           ],
         },
       ],
-      slackUserId: "U123",
+      actorId: "slack:U123",
     });
 
     const [, init] = fetchFn.mock.calls[0]!;
@@ -600,7 +600,7 @@ describe("MagentaClient", () => {
     const request = client.invoke({
       message: "Another request",
       sessionId: "session-1",
-      slackUserId: "U123",
+      actorId: "slack:U123",
     });
 
     await expect(request).rejects.toMatchObject<Partial<AgenticApiError>>({
@@ -631,7 +631,7 @@ describe("MagentaClient", () => {
       await expect(
         client.invoke({
           message: "List projects",
-          slackUserId: "U123",
+          actorId: "slack:U123",
         }),
       ).rejects.toMatchObject({
         name: "AgenticApiError",
@@ -648,7 +648,7 @@ describe("MagentaClient", () => {
     const client = new MagentaClient(config, { fetchFn });
 
     await expect(
-      client.invoke({ message: "Hello", slackUserId: "U123" }),
+      client.invoke({ message: "Hello", actorId: "slack:U123" }),
     ).rejects.toThrow(/invalid response/i);
   });
 });

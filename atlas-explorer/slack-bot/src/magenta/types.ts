@@ -108,7 +108,7 @@ export type InvocationProgressHandler = (
 
 export interface InvokeInput {
   message: string;
-  slackUserId: string;
+  actorId: string;
   sessionId?: string;
 }
 
@@ -120,5 +120,5 @@ export interface ResumeInput {
     interruptId: string;
     decision: ReviewDecision | ReviewDecision[];
   }>;
-  slackUserId: string;
+  actorId: string;
 }

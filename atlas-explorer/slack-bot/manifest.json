@@ -58,16 +58,20 @@
         "groups:history",
         "im:history",
         "im:read",
-        "im:write"
+        "im:write",
+        "users:read"
       ]
     }
   },
   "settings": {
     "event_subscriptions": {
-      "request_url": "https://example.com/api/slack/events",
+      "request_url": "https://example.com/api/webhooks/slack",
       "bot_events": [
         "app_home_opened",
+        "app_context_changed",
         "app_mention",
+        "agent_session_stopped",
+        "agent_session_title_changed",
         "message.channels",
         "message.groups",
         "message.im"
@@ -75,7 +79,7 @@
     },
     "interactivity": {
       "is_enabled": true,
-      "request_url": "https://example.com/api/slack/events"
+      "request_url": "https://example.com/api/webhooks/slack"
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": true,

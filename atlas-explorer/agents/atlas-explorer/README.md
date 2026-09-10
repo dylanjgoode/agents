@@ -92,12 +92,13 @@ agentic dev up
 Open the playground at http://localhost:3000. Stop the stack with
 `agentic dev stop`.
 
-## Talk from Slack
+## Talk from chat platforms
 
-The sibling [`@AtlasExplorer` Slack bot](../../slack-bot) invokes this same
-Magenta workspace and preserves Agentic sessions per Slack thread. It supports
-local Socket Mode, Vercel deployment, and Approve/Reject controls for this
-agent's mutation interrupts.
+The sibling [`@AtlasExplorer` Chat SDK integration](../../slack-bot) invokes
+this same Magenta workspace and preserves Agentic sessions per platform thread.
+Its current Slack adapter supports local Socket Mode, Vercel deployment, and
+Approve/Reject controls for this agent's mutation interrupts; shared handlers
+can be reused with additional Chat SDK adapters.
 
 ## What to try
 

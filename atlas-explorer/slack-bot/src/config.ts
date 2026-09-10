@@ -4,12 +4,14 @@ export type RuntimeMode = "socket" | "http";
 
 export interface SlackBotConfig {
   mode: RuntimeMode;
+  chat: {
+    allowedActorIds: string[];
+  };
   slack: {
     botToken: string;
     appToken?: string;
     signingSecret?: string;
     botDisplayName: string;
-    allowedUserIds: string[];
   };
   agentic: {
     baseUrl: string;
@@ -50,6 +52,7 @@ const environmentSchema = z
     MONGODB_URI: optionalString,
     SLACK_APP_TOKEN: optionalString,
     SLACK_BOT_DISPLAY_NAME: optionalString,
+    CHAT_ALLOWED_USER_IDS: optionalString,
     SLACK_ALLOWED_USER_IDS: optionalString,
     AGENTIC_BASE_URL: optionalUrl,
     THREAD_STORE_DB: optionalString,
@@ -93,15 +96,36 @@ export function loadConfig(
       path: ["MONGODB_URI"],
     });
   }
+  const configuredAllowlist =
+    parsed.CHAT_ALLOWED_USER_IDS ??
+    parsed.SLACK_ALLOWED_USER_IDS;
   if (
-    !parsed.SLACK_ALLOWED_USER_IDS?.split(",").some(
-      (userId) => userId.trim().length > 0,
+    !configuredAllowlist?.split(",").some(
+      (actorId) => actorId.trim().length > 0,
     )
   ) {
     issues.push({
       code: "custom",
-      message: "is required",
-      path: ["SLACK_ALLOWED_USER_IDS"],
+      message:
+        "is required (SLACK_ALLOWED_USER_IDS remains supported during migration)",
+      path: ["CHAT_ALLOWED_USER_IDS"],
+    });
+  }
+  if (
+    parsed.CHAT_ALLOWED_USER_IDS &&
+    parsed.CHAT_ALLOWED_USER_IDS.split(",")
+      .map((actorId) => actorId.trim())
+      .filter(Boolean)
+      .some(
+        (actorId) =>
+          !/^[a-z][a-z0-9_-]*:.+$/i.test(actorId),
+      )
+  ) {
+    issues.push({
+      code: "custom",
+      message:
+        "must contain platform-qualified IDs such as slack:U123",
+      path: ["CHAT_ALLOWED_USER_IDS"],
     });
   }
   const invokeTarget =
@@ -131,15 +155,29 @@ export function loadConfig(
   }
 
   const values = result.data;
-  const allowedUserIds = values.SLACK_ALLOWED_USER_IDS
-    ? [...new Set(
-        values.SLACK_ALLOWED_USER_IDS.split(",")
-          .map((userId) => userId.trim())
-          .filter(Boolean),
-      )]
-    : [];
+  const usingLegacyAllowlist = !values.CHAT_ALLOWED_USER_IDS;
+  const allowedActorIds = [
+    ...new Set(
+      (
+        values.CHAT_ALLOWED_USER_IDS ??
+        values.SLACK_ALLOWED_USER_IDS ??
+        ""
+      )
+        .split(",")
+        .map((actorId) => actorId.trim())
+        .filter(Boolean)
+        .map((actorId) =>
+          usingLegacyAllowlist
+            ? `slack:${actorId}`
+            : normalizePlatformPrefix(actorId),
+        ),
+    ),
+  ];
   return {
     mode,
+    chat: {
+      allowedActorIds,
+    },
     slack: {
       botToken: values.SLACK_BOT_TOKEN,
       ...(values.SLACK_APP_TOKEN
@@ -148,7 +186,6 @@ export function loadConfig(
       ...(values.SLACK_SIGNING_SECRET
         ? { signingSecret: values.SLACK_SIGNING_SECRET }
         : {}),
-      allowedUserIds,
       botDisplayName: values.SLACK_BOT_DISPLAY_NAME ?? "AtlasExplorer",
     },
     agentic: {
@@ -170,4 +207,11 @@ export function loadConfig(
       databaseName: values.THREAD_STORE_DB ?? "atlas_explorer_slack",
     },
   };
+}
+
+function normalizePlatformPrefix(actorId: string): string {
+  const separator = actorId.indexOf(":");
+  return `${actorId.slice(0, separator).toLowerCase()}${actorId.slice(
+    separator,
+  )}`;
 }

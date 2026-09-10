@@ -4,10 +4,9 @@ import type {
 } from "../magenta/types.js";
 
 export interface ThreadRecord {
-  channelId: string;
-  threadTs: string;
+  threadId: string;
   magentaSessionId?: string;
-  recentSlackEventIds?: string[];
+  recentEventIds?: string[];
   inFlightEventId?: string;
   inFlightStartedAt?: Date;
   pendingExecutionId?: string;
@@ -15,15 +14,15 @@ export interface ThreadRecord {
   pendingInterrupts?: AgentInterrupt[];
   pendingResumeSchema?: Record<string, unknown>;
   pendingActionRequests?: AgentActionRequest[];
-  pendingRequestedBySlackUserId?: string;
+  pendingRequestedByActorId?: string;
   pendingReviewState?: "pending" | "resuming" | "uncertain";
   pendingReviewClaimedAt?: Date;
-  pendingDelivery?: PendingSlackDelivery;
+  pendingDelivery?: PendingDelivery;
   retentionState?: "inactive" | "delivery_pending";
   updatedAt: Date;
 }
 
-export interface PendingSlackDelivery {
+export interface PendingDelivery {
   id: string;
   text: string;
   state?: "pending" | "sending";
@@ -44,11 +43,10 @@ export interface TurnClaim {
 }
 
 export interface ThreadStore {
-  get(channelId: string, threadTs: string): Promise<ThreadRecord | null>;
+  get(threadId: string): Promise<ThreadRecord | null>;
   put(record: ThreadRecord): Promise<void>;
   claimTurn(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     eventId: string,
     claimedAt: Date,
   ): Promise<TurnClaim>;
@@ -57,8 +55,7 @@ export interface ThreadStore {
     record: ThreadRecord,
   ): Promise<boolean>;
   claimPendingReview(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     interruptId: string,
     claimedAt: Date,
   ): Promise<ThreadRecord | null>;
@@ -67,21 +64,19 @@ export interface ThreadStore {
     record: ThreadRecord,
   ): Promise<boolean>;
   claimPendingDelivery(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     deliveryId: string,
     claimId: string,
     claimedAt: Date,
-  ): Promise<PendingSlackDelivery | null>;
+  ): Promise<PendingDelivery | null>;
   clearPendingDelivery(
-    channelId: string,
-    threadTs: string,
+    threadId: string,
     deliveryId: string,
     claimId: string,
   ): Promise<boolean>;
   close(): Promise<void>;
 }
 
-export function threadKey(channelId: string, threadTs: string): string {
-  return `${channelId}:${threadTs}`;
+export function threadKey(threadId: string): string {
+  return threadId;
 }

@@ -57,7 +57,7 @@ export class MagentaClient {
       message,
       ...(this.config.invokeTarget === "local" ? { wait: true } : {}),
       ...(input.sessionId ? { session_id: input.sessionId } : {}),
-      user_id: input.slackUserId,
+      user_id: input.actorId,
     });
   }
 
@@ -75,7 +75,7 @@ export class MagentaClient {
       {
         message,
         ...(input.sessionId ? { session_id: input.sessionId } : {}),
-        user_id: input.slackUserId,
+        user_id: input.actorId,
       },
       onProgress,
     );
@@ -84,7 +84,7 @@ export class MagentaClient {
   resume(input: ResumeInput): Promise<InvocationResult> {
     return this.post({
       session_id: input.sessionId,
-      user_id: input.slackUserId,
+      user_id: input.actorId,
       ...(this.config.invokeTarget === "local" ? { wait: true } : {}),
       resume_map: buildResumeMap(input),
     });
@@ -97,7 +97,7 @@ export class MagentaClient {
     return this.stream(
       {
         session_id: input.sessionId,
-        user_id: input.slackUserId,
+        user_id: input.actorId,
         resume_map: buildResumeMap(input),
       },
       onProgress,

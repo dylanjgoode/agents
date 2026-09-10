@@ -21,7 +21,7 @@ function createStore(
 }
 
 describe("MemoryThreadStore", () => {
-  it("round-trips a Slack-to-Magenta thread record", async () => {
+  it("round-trips a chat-to-Magenta thread record", async () => {
     await exercisesRoundTrip(createStore());
   });
 
@@ -38,37 +38,37 @@ describe("MemoryThreadStore", () => {
 
     now += 60_001;
 
-    expect(await store.get(baseRecord.channelId, baseRecord.threadTs)).toBeNull();
+    expect(await store.get(baseRecord.threadId)).toBeNull();
   });
 
   it("evicts the least recently updated record at capacity", async () => {
     const store = createStore({ maxEntries: 2 });
     await store.put({
       ...baseRecord,
-      threadTs: "1",
+      threadId: "slack:C123:1",
       updatedAt: new Date("2026-09-08T12:00:00.000Z"),
     });
     await store.put({
       ...baseRecord,
-      threadTs: "2",
+      threadId: "slack:C123:2",
       updatedAt: new Date("2026-09-08T12:01:00.000Z"),
     });
     await store.put({
       ...baseRecord,
-      threadTs: "3",
+      threadId: "slack:C123:3",
       updatedAt: new Date("2026-09-08T12:02:00.000Z"),
     });
 
-    expect(await store.get(baseRecord.channelId, "1")).toBeNull();
-    expect(await store.get(baseRecord.channelId, "2")).not.toBeNull();
-    expect(await store.get(baseRecord.channelId, "3")).not.toBeNull();
+    expect(await store.get("slack:C123:1")).toBeNull();
+    expect(await store.get("slack:C123:2")).not.toBeNull();
+    expect(await store.get("slack:C123:3")).not.toBeNull();
   });
 
   it("atomically claims one reviewer for the pending interrupt", async () => {
     await exercisesReviewClaim(createStore());
   });
 
-  it("deduplicates events and serializes turns in a Slack thread", async () => {
+  it("deduplicates events and serializes turns in a chat thread", async () => {
     await exercisesTurnClaim(createStore());
   });
 
