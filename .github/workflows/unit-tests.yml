@@ -26,6 +26,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Magenta git packages pin packageManager npm; pnpm prepare must still run.
+      NPM_CONFIG_PACKAGE_MANAGER_STRICT: "false"
+      COREPACK_ENABLE_STRICT: "0"
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
