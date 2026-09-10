@@ -8,7 +8,7 @@ import type { Chat } from "chat";
 import type { DeliveryBoundary } from "../chat/surface.js";
 
 const RESPONSE_METADATA_EVENT = "atlas_explorer_responded";
-const MAX_SLACK_TEXT_LENGTH = 38_000;
+const MAX_SLACK_MARKDOWN_LENGTH = 12_000;
 
 const SUGGESTED_PROMPTS = [
   {
@@ -64,51 +64,132 @@ export function createSlackDeliveryBoundary(
   return {
     async deliver(thread, text, deliveryId): Promise<void> {
       const { channel, threadTs } = adapter.decodeThreadId(thread.id);
-      await adapter.webClient.chat.postMessage({
-        channel,
-        thread_ts: threadTs,
-        text: truncateSlackResponse(text),
-        metadata: {
-          event_type: RESPONSE_METADATA_EVENT,
-          event_payload: { delivery_id: deliveryId },
-        },
-      });
+      const chunks = splitSlackResponse(text);
+      const existingMarkers =
+        chunks.length > 1
+          ? await scanSlackDeliveryMarkers(
+              adapter,
+              channel,
+              threadTs,
+              deliveryId,
+              chunks.length,
+            )
+          : undefined;
+      if (existingMarkers?.delivered) {
+        return;
+      }
+
+      for (const [index, chunk] of chunks.entries()) {
+        const isFinalChunk = index === chunks.length - 1;
+        if (
+          !isFinalChunk &&
+          existingMarkers?.chunkIndexes.has(index)
+        ) {
+          continue;
+        }
+        await adapter.webClient.chat.postMessage({
+          channel,
+          thread_ts: threadTs,
+          markdown_text: chunk,
+          ...(isFinalChunk
+            ? {
+                metadata: {
+                  event_type: RESPONSE_METADATA_EVENT,
+                  event_payload: { delivery_id: deliveryId },
+                },
+              }
+            : {
+                metadata: {
+                  event_type: RESPONSE_METADATA_EVENT,
+                  event_payload: {
+                    delivery_id: chunkDeliveryMarker(
+                      deliveryId,
+                      index,
+                      chunks.length,
+                    ),
+                  },
+                },
+              }),
+        });
+      }
     },
 
     async getDeliveryStatus(thread, deliveryId) {
       const { channel, threadTs } = adapter.decodeThreadId(thread.id);
-      let cursor: string | undefined;
       try {
-        do {
-          const page = await adapter.webClient.conversations.replies({
-            channel,
-            ts: threadTs,
-            include_all_metadata: true,
-            limit: 100,
-            ...(cursor ? { cursor } : {}),
-          });
-          if (
-            page.messages?.some(
-              (message) =>
-                message.metadata?.event_type ===
-                  RESPONSE_METADATA_EVENT &&
-                (
-                  message.metadata
-                    .event_payload as Record<string, unknown>
-                )?.delivery_id === deliveryId,
-            )
-          ) {
-            return "delivered";
-          }
-          cursor =
-            page.response_metadata?.next_cursor?.trim() || undefined;
-        } while (cursor);
-        return "not_delivered";
+        const markers = await scanSlackDeliveryMarkers(
+          adapter,
+          channel,
+          threadTs,
+          deliveryId,
+        );
+        return markers.delivered
+          ? "delivered"
+          : "not_delivered";
       } catch {
         return "unknown";
       }
     },
   };
+}
+
+async function scanSlackDeliveryMarkers(
+  adapter: SlackAdapter,
+  channel: string,
+  threadTs: string,
+  deliveryId: string,
+  chunkCount?: number,
+): Promise<{
+  chunkIndexes: Set<number>;
+  delivered: boolean;
+}> {
+  const chunkIndexes = new Set<number>();
+  let cursor: string | undefined;
+  let delivered = false;
+  do {
+    const page = await adapter.webClient.conversations.replies({
+      channel,
+      ts: threadTs,
+      include_all_metadata: true,
+      limit: 100,
+      ...(cursor ? { cursor } : {}),
+    });
+    for (const message of page.messages ?? []) {
+      const metadata = message.metadata;
+      const payload = metadata
+        ?.event_payload as Record<string, unknown> | undefined;
+      if (
+        metadata?.event_type !== RESPONSE_METADATA_EVENT ||
+        typeof payload?.delivery_id !== "string"
+      ) {
+        continue;
+      }
+      if (payload.delivery_id === deliveryId) {
+        delivered = true;
+      } else if (chunkCount !== undefined) {
+        for (let index = 0; index < chunkCount - 1; index += 1) {
+          if (
+            payload.delivery_id ===
+            chunkDeliveryMarker(deliveryId, index, chunkCount)
+          ) {
+            chunkIndexes.add(index);
+            break;
+          }
+        }
+      }
+    }
+    cursor =
+      page.response_metadata?.next_cursor?.trim() || undefined;
+  } while (cursor);
+  return { chunkIndexes, delivered };
+}
+
+function chunkDeliveryMarker(
+  deliveryId: string,
+  chunkIndex: number,
+  chunkCount: number,
+): string {
+  return `${deliveryId}:chunk:${chunkIndex}:${chunkCount}`;
 }
 
 export function registerSlackPlatformHandlers(
@@ -127,12 +208,67 @@ export function registerSlackPlatformHandlers(
   });
 }
 
-export function truncateSlackResponse(text: string): string {
-  if (text.length <= MAX_SLACK_TEXT_LENGTH) {
-    return text;
+function splitSlackResponse(text: string): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > MAX_SLACK_MARKDOWN_LENGTH) {
+    const splitIndex = findSlackMarkdownSplitIndex(remaining);
+    chunks.push(remaining.slice(0, splitIndex));
+    remaining = remaining.slice(splitIndex);
   }
-  const suffix = "\n\n_[Response truncated for Slack.]_";
-  return `${text.slice(0, MAX_SLACK_TEXT_LENGTH - suffix.length)}${suffix}`;
+  chunks.push(remaining);
+  return chunks;
+}
+
+function findSlackMarkdownSplitIndex(text: string): number {
+  const paragraphStart = text.lastIndexOf(
+    "\n\n",
+    MAX_SLACK_MARKDOWN_LENGTH - 2,
+  );
+  const paragraphEnd =
+    paragraphStart >= 0 ? paragraphStart + 2 : -1;
+
+  let headingStart = -1;
+  const headingPattern = /\n(?=#{1,6}[ \t])/g;
+  const searchWindow = text.slice(
+    0,
+    MAX_SLACK_MARKDOWN_LENGTH + 1,
+  );
+  for (const match of searchWindow.matchAll(headingPattern)) {
+    headingStart = match.index + 1;
+  }
+
+  const previousParagraphStart =
+    paragraphStart > 0
+      ? text.lastIndexOf("\n\n", paragraphStart - 1)
+      : -1;
+  if (
+    headingStart > previousParagraphStart &&
+    headingStart < paragraphEnd
+  ) {
+    return headingStart;
+  }
+
+  const naturalBoundary = Math.max(paragraphEnd, headingStart);
+  if (naturalBoundary > 0) {
+    return naturalBoundary;
+  }
+
+  const lineEnd = text.lastIndexOf(
+    "\n",
+    MAX_SLACK_MARKDOWN_LENGTH - 1,
+  );
+  const splitIndex = lineEnd >= 0
+    ? lineEnd + 1
+    : MAX_SLACK_MARKDOWN_LENGTH;
+  const previousCodeUnit = text.charCodeAt(splitIndex - 1);
+  const nextCodeUnit = text.charCodeAt(splitIndex);
+  const splitsSurrogatePair =
+    previousCodeUnit >= 0xd800 &&
+    previousCodeUnit <= 0xdbff &&
+    nextCodeUnit >= 0xdc00 &&
+    nextCodeUnit <= 0xdfff;
+  return splitsSurrogatePair ? splitIndex - 1 : splitIndex;
 }
 
 export function parseSlackReviewInterruptId(
