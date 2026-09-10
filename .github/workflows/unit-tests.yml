@@ -6,9 +6,14 @@ on:
       working-directory:
         required: true
         type: string
+      cache-mongodb-binaries:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   test:
@@ -32,6 +37,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
+      - uses: actions/cache@v4
+        if: inputs.cache-mongodb-binaries
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-memory-server-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
+          restore-keys: |
+            mongodb-memory-server-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
