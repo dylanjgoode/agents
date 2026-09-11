@@ -18,10 +18,10 @@ workspace; access is not scoped to each user's Atlas identity.
 
 ## Prerequisites
 
-- Node.js 22 or newer and pnpm
+- Node.js 22 and pnpm
 - A Slack workspace where you can create and install an app
-- Either a deployed Atlas Explorer workspace and Agentic Platform API key, or
-  a local Atlas Explorer `agentic dev` stack
+- Either a deployed Atlas Explorer workspace and project-scoped Agentic
+  service-account credentials, or a local Atlas Explorer `agentic dev` stack
 - MongoDB 5.0+ in production for Chat SDK state, durable workflow state, and
   partial TTL retention indexes. Local Socket Mode can start an ephemeral
   MongoDB automatically.
@@ -33,12 +33,19 @@ Configure and verify the Atlas Explorer agent first. Its
 cd ../agents/atlas-explorer
 agentic build
 agentic deploy
-agentic api-key create
+agentic service-account create atlas-explorer-slack-bot \
+  --project-id <agentic-project-id> \
+  --role AGENT_DEVELOPER \
+  --secret-expires-in 2160h
 agentic invoke --json "List the Atlas projects I can access"
 ```
 
 For a deployed agent, the JSON probe confirms the project/workspace target and
-the current `session_id` invocation contract before Slack is involved.
+the current `session_id` invocation contract before Slack is involved. Save the
+service-account client secret when it is displayed; it is shown only once. The
+Slack bot exchanges the client ID and secret at `/api/v1/oauth/token`, caches
+the returned short-lived bearer token, and refreshes it based on the token's
+reported lifetime.
 
 ## Configure the Slack app
 
@@ -102,7 +109,8 @@ Then configure the Slack bot:
 ```dotenv
 AGENTIC_INVOKE_TARGET=local
 AGENTIC_BASE_URL=http://localhost:3000
-AGENTIC_API_KEY=
+AGENTIC_SA_CLIENT_ID=
+AGENTIC_SA_CLIENT_SECRET=
 AGENTIC_PROJECT_ID=
 AGENTIC_WORKSPACE_ID=
 ```
@@ -117,23 +125,85 @@ credentials come from the agent's local `.env`.
 
 ## Deploy to Vercel
 
-1. Import `atlas-explorer/slack-bot` as the Vercel project root.
-2. Enable Fluid Compute and set these environment variables:
+This development bot uses the Vercel Production target only so the project
+gets one stable `*.vercel.app` domain. Its Slack, Agentic, and MongoDB values
+are still development credentials and data.
+
+The current hosted development deployment is:
+
+- Vercel project: `mongodb-team/atlas-explorer`
+- Stable domain: `https://atlas-explorer-three.vercel.app`
+- Slack webhook:
+  `https://atlas-explorer-three.vercel.app/api/webhooks/slack`
+- Function: `/api/webhooks/slack` in `iad1`, with a 300-second maximum
+
+Set the deployment coordinates once before running the commands below:
+
+```bash
+export VERCEL_SCOPE=mongodb-team
+export VERCEL_PROJECT=atlas-explorer
+export VERCEL_URL=https://atlas-explorer-three.vercel.app
+```
+
+1. Link `atlas-explorer/slack-bot` to the Vercel project:
+
+   ```bash
+   pnpm install --frozen-lockfile
+   pnpm vercel link \
+     --project "$VERCEL_PROJECT" \
+     --scope "$VERCEL_SCOPE"
+   ```
+
+   `vercel.json` owns the API-only framework, empty build command, Fluid
+   Compute, and `iad1` region settings; `package.json` pins Node.js 22.
+   Deployment Protection is a project-level setting and must not protect the
+   stable webhook domain.
+2. Set these Production-scoped environment variables:
    - `SLACK_BOT_TOKEN`
    - `SLACK_SIGNING_SECRET`
    - `CHAT_ALLOWED_USER_IDS` (for example, `slack:U0123456789`)
    - `AGENTIC_INVOKE_TARGET` (`gateway`)
-   - `AGENTIC_BASE_URL`
-   - `AGENTIC_API_KEY`
+   - `AGENTIC_SA_CLIENT_ID`
+   - `AGENTIC_SA_CLIENT_SECRET`
    - `AGENTIC_PROJECT_ID`
    - `AGENTIC_WORKSPACE_ID`
    - `MONGODB_URI`
+   - `AGENTIC_BASE_URL` (optional; defaults to the platform gateway)
    - `THREAD_STORE_DB` (optional; defaults to `atlas_explorer_slack`)
-3. Deploy, then replace every `https://example.com/api/webhooks/slack` URL in
-   the Slack manifest with
-   `https://<your-vercel-domain>/api/webhooks/slack`.
-4. Set `settings.socket_mode_enabled` to `false`, save the Slack app changes,
-   and reinstall the app if Slack requests it.
+
+   Enter raw values only, without surrounding shell quotes or a
+   `VARIABLE_NAME=` prefix. `CHAT_ALLOWED_USER_IDS` requires qualified values
+   such as `slack:U0123456789`. The legacy `SLACK_ALLOWED_USER_IDS` requires
+   unqualified values such as `U0123456789` because the bot adds `slack:`
+   automatically.
+
+   Use a project-scoped Agentic service account with the `AGENT_DEVELOPER`
+   role. Vercel uses dynamic outbound IPs, so do not restrict this development
+   service account to a fixed IP access list. If static Vercel egress is added
+   later, restrict the account to those addresses.
+3. Run the local gates, then build the production artifact locally:
+
+   ```bash
+   pnpm test
+   pnpm typecheck
+   pnpm build
+   pnpm vercel build --prod --yes --scope "$VERCEL_SCOPE"
+   test -d .vercel/output/functions/api/webhooks/slack.func
+   ```
+
+   `.vercel/output/functions` must contain the Slack webhook and no test
+   function. `pnpm build` is a TypeScript verification gate; Vercel's Build
+   Command is intentionally empty because Vercel compiles the function.
+4. Deploy the verified artifact with
+   `pnpm vercel deploy --prebuilt --prod --scope "$VERCEL_SCOPE"`.
+   Confirm the deployment is ready and that Vercel automatically advances
+   `$VERCEL_URL`. Do not set a separate alias.
+5. Replace every `https://example.com/api/webhooks/slack` URL in the Slack
+   app settings with the stable webhook URL above. Configure both Event
+   Subscriptions and Interactivity & Shortcuts.
+6. Disable Socket Mode, save the Slack app changes, and reinstall only if
+   Slack requests it or OAuth scopes changed. Slack must accept Event
+   Subscriptions URL verification before testing messages.
 
 The thin Vercel handler passes the untouched request to
 `bot.webhooks.slack` and supplies Vercel's `waitUntil`, so the official adapter
@@ -148,9 +218,63 @@ active work are excluded from expiration. Treat long-lived pending or
 uncertain reviews as operational alerts: verify Agentic/Atlas state before
 archiving those records.
 
-Allow Vercel to reach the thread-store MongoDB deployment. Atlas MCP network
-allowlisting is separate: MCP runs from Magenta, so allow the Magenta runtime's
-egress addresses rather than Vercel's addresses.
+Allow Vercel to reach the thread-store MongoDB deployment. Standard Vercel
+Functions use dynamic egress addresses; this development deployment therefore
+requires `0.0.0.0/0` in the thread-store Atlas project's IP Access List unless
+Vercel Static IPs or Secure Compute is enabled. Database credentials still
+enforce access. Atlas MCP network allowlisting is separate: MCP runs from
+Magenta, so allow the Magenta runtime's egress addresses rather than Vercel's
+addresses.
+
+After cutover, test an allowlisted DM, a channel mention and thread follow-up,
+a disallowed user, and both Approve and Reject review actions. Check Vercel
+logs for Slack signature errors, MongoDB connection or index failures, retries,
+and `FUNCTION_INVOCATION_TIMEOUT`:
+
+```bash
+pnpm vercel logs --project "$VERCEL_PROJECT" --environment production \
+  --since 30m --expand --no-branch --scope "$VERCEL_SCOPE"
+pnpm vercel env run -e production --scope "$VERCEL_SCOPE" -- sh -c \
+  'agentic --no-log logs --source "agent,tool" --since 30m \
+  --workspace-id "$AGENTIC_WORKSPACE_ID" \
+  --project-id "$AGENTIC_PROJECT_ID"'
+```
+
+Rotate the Agentic client secret before its configured expiry:
+
+```bash
+agentic service-account rotate "$AGENTIC_SA_CLIENT_ID" \
+  --project-id "$AGENTIC_PROJECT_ID" \
+  --secret-expires-in 2160h
+pnpm vercel env add AGENTIC_SA_CLIENT_SECRET production \
+  --force --scope "$VERCEL_SCOPE"
+pnpm vercel deploy --prebuilt --prod --scope "$VERCEL_SCOPE"
+```
+
+Enter the newly issued secret when prompted. The previous secret remains valid
+for a grace period, so verify the redeployment before that period ends. A
+second rotation ends the previous secret's grace period immediately.
+
+Useful failure signals:
+
+- `Invalid signature` with HTTP 401 is expected for an unsigned webhook probe.
+- `Invalid scheme` means `MONGODB_URI` contains a malformed stored value.
+- `SSL alert 80` or `ReplicaSetNoPrimary` during startup usually means the
+  thread-store Atlas IP Access List does not allow Vercel.
+- HTTP 401 from `/api/v1/oauth/token` means the Agentic service-account
+  credentials are invalid or its IP access list rejects Vercel.
+
+If verification fails, inspect recent production deployments and roll back:
+
+```bash
+pnpm vercel ls "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE"
+pnpm vercel rollback <known-good-deployment-url> \
+  --scope "$VERCEL_SCOPE"
+```
+
+Restore the prior Slack request path or Socket Mode. Keep the reusable
+`manifest.json` placeholders; do not commit deployment-specific URLs or
+credentials there.
 
 ## Human review
 

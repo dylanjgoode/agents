@@ -126,8 +126,7 @@ export async function handleReviewDecision(
     );
     const outcomeWasConfirmedNotApplied =
       error instanceof AgenticApiError &&
-      (error.code === "RESUME_INPUT_INVALID" ||
-        [400, 401, 403, 404, 422].includes(error.status));
+      error.requestOutcome !== "unknown";
     const {
       pendingReviewClaimedAt: _claimedAt,
       ...reviewRecord

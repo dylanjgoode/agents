@@ -3,7 +3,10 @@ import { Chat, type StateAdapter } from "chat";
 
 import { registerChatHandlers } from "./chat/handlers.js";
 import { platformActorId } from "./chat/identity.js";
-import type { AgentGateway } from "./chat/types.js";
+import type {
+  AgentGateway,
+  HandlerLogger,
+} from "./chat/types.js";
 import {
   loadConfig,
   type SlackBotConfig,
@@ -37,6 +40,7 @@ export interface BotRuntime {
 interface RuntimeOptions {
   agent?: AgentGateway;
   connection?: MongoConnection;
+  logger?: HandlerLogger;
   slackAdapter?: SlackAdapter;
   state?: StateAdapter;
   store?: ThreadStore;
@@ -112,6 +116,7 @@ export async function createRuntime(
     authorizedActorIds: normalizeAllowedActors(
       config.chat.allowedActorIds,
     ),
+    logger: options.logger ?? console,
     deliveryForAdapter: (adapter) =>
       adapter.name === slackAdapter.name ? delivery : undefined,
     reviewInterruptIdForAdapter: (

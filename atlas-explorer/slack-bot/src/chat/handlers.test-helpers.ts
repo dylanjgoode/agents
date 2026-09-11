@@ -20,10 +20,14 @@ export class FakeAgentGateway implements AgentGateway {
   progressEvents: InvocationProgress[] = [];
   invokeResult!: InvocationResult;
   resumeResult!: InvocationResult;
+  invokeError?: unknown;
   resumeError?: unknown;
 
   async invoke(input: InvokeInput): Promise<InvocationResult> {
     this.invokeInputs.push(input);
+    if (this.invokeError) {
+      throw this.invokeError;
+    }
     return this.invokeResult;
   }
 
@@ -40,6 +44,9 @@ export class FakeAgentGateway implements AgentGateway {
     onProgress?: InvocationProgressHandler,
   ): Promise<InvocationResult> {
     this.invokeInputs.push(input);
+    if (this.invokeError) {
+      throw this.invokeError;
+    }
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }

@@ -10,27 +10,48 @@ import {
   streamChunkSchema,
   suspendContextSchema,
 } from "./types.js";
+import {
+  type AccessTokenProvider,
+  AgenticAuthenticationError,
+  ServiceAccountTokenProvider,
+} from "./serviceAccountTokenProvider.js";
 
 interface ClientOptions {
   fetchFn?: typeof fetch;
+  tokenProvider?: AccessTokenProvider;
   timeoutMs?: number;
+}
+
+export type AgenticRequestOutcome =
+  | "not_sent"
+  | "rejected"
+  | "unknown";
+
+interface AgenticApiErrorOptions {
+  cause?: unknown;
+  code?: string;
+  requestOutcome: AgenticRequestOutcome;
+  status: number;
 }
 
 export class AgenticApiError extends Error {
   readonly status: number;
   readonly code?: string;
+  readonly requestOutcome: AgenticRequestOutcome;
 
-  constructor(message: string, status: number, code?: string) {
-    super(message);
+  constructor(message: string, options: AgenticApiErrorOptions) {
+    super(message, { cause: options.cause });
     this.name = "AgenticApiError";
-    this.status = status;
-    this.code = code;
+    this.status = options.status;
+    this.code = options.code;
+    this.requestOutcome = options.requestOutcome;
   }
 }
 
 export class MagentaClient {
   private readonly config: AgenticClientConfig;
   private readonly fetchFn: typeof fetch;
+  private readonly tokenProvider?: AccessTokenProvider;
   private readonly timeoutMs: number;
 
   constructor(config: AgenticClientConfig, options: ClientOptions = {}) {
@@ -39,6 +60,17 @@ export class MagentaClient {
       baseUrl: config.baseUrl.replace(/\/+$/, ""),
     };
     this.fetchFn = options.fetchFn ?? fetch;
+    this.tokenProvider =
+      options.tokenProvider ??
+      (config.invokeTarget === "gateway"
+        ? new ServiceAccountTokenProvider(
+            {
+              baseUrl: config.baseUrl,
+              ...config.serviceAccount,
+            },
+            { fetchFn: this.fetchFn },
+          )
+        : undefined);
     this.timeoutMs = options.timeoutMs ?? 280_000;
   }
 
@@ -46,7 +78,11 @@ export class MagentaClient {
     const message = input.message.trim();
     if (!message) {
       return Promise.reject(
-        new AgenticApiError("Agent message cannot be empty", 0, "INVALID_INPUT"),
+        new AgenticApiError("Agent message cannot be empty", {
+          status: 0,
+          code: "INVALID_INPUT",
+          requestOutcome: "not_sent",
+        }),
       );
     }
 
@@ -68,7 +104,11 @@ export class MagentaClient {
     const message = input.message.trim();
     if (!message) {
       return Promise.reject(
-        new AgenticApiError("Agent message cannot be empty", 0, "INVALID_INPUT"),
+        new AgenticApiError("Agent message cannot be empty", {
+          status: 0,
+          code: "INVALID_INPUT",
+          requestOutcome: "not_sent",
+        }),
       );
     }
     return this.stream(
@@ -107,39 +147,25 @@ export class MagentaClient {
   private async post(body: Record<string, unknown>): Promise<InvocationResult> {
     const sessionId =
       typeof body.session_id === "string" ? body.session_id : undefined;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (this.config.apiKey) {
-      headers.Authorization = `Bearer ${this.config.apiKey}`;
-    }
-    if (sessionId) {
-      headers["X-Session-ID"] = sessionId;
-    }
+    const response = await this.sendRequest(
+      this.invokeUrl(),
+      body,
+      sessionId,
+      "Agentic request failed",
+    );
 
-    let response: Response;
-    try {
-      response = await this.fetchFn(this.invokeUrl(), {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Agentic request failed";
-      throw new AgenticApiError(message, 0, "REQUEST_FAILED");
-    }
-
-    const rawBody = await response.text();
+    const rawBody = await readResponseText(response);
     let raw: unknown;
     try {
       raw = rawBody ? JSON.parse(rawBody) : {};
     } catch {
       throw new AgenticApiError(
         `Agentic API returned non-JSON content (HTTP ${response.status})`,
-        response.status,
-        "INVALID_RESPONSE",
+        {
+          status: response.status,
+          code: "INVALID_RESPONSE",
+          requestOutcome: requestOutcomeForResponse(response.status),
+        },
       );
     }
 
@@ -147,8 +173,13 @@ export class MagentaClient {
     if (!parsed.success) {
       throw new AgenticApiError(
         "Agentic API returned an invalid response",
-        response.status,
-        "INVALID_RESPONSE",
+        {
+          status: response.status,
+          code: "INVALID_RESPONSE",
+          requestOutcome: response.ok
+            ? "unknown"
+            : requestOutcomeForResponse(response.status),
+        },
       );
     }
 
@@ -156,8 +187,14 @@ export class MagentaClient {
     if (!response.ok || data.success === false) {
       throw new AgenticApiError(
         data.error ?? `Agentic API request failed (HTTP ${response.status})`,
-        response.status,
-        data.code,
+        {
+          status: response.status,
+          code: data.code,
+          requestOutcome: requestOutcomeForResponse(
+            response.status,
+            data.code,
+          ),
+        },
       );
     }
 
@@ -166,18 +203,25 @@ export class MagentaClient {
     if (!returnedSessionId) {
       throw new AgenticApiError(
         "Agentic API returned an invalid response without a session ID",
-        response.status,
-        "INVALID_RESPONSE",
+        {
+          status: response.status,
+          code: "INVALID_RESPONSE",
+          requestOutcome: "unknown",
+        },
       );
     }
 
     if (data.status === "error" || data.status === "cancelled") {
       throw new AgenticApiError(
         data.error ?? `Agentic execution ${data.status}`,
-        response.status,
-        data.status === "error"
-          ? "EXECUTION_ERROR"
-          : "EXECUTION_CANCELLED",
+        {
+          status: response.status,
+          code:
+            data.status === "error"
+              ? "EXECUTION_ERROR"
+              : "EXECUTION_CANCELLED",
+          requestOutcome: "unknown",
+        },
       );
     }
 
@@ -192,8 +236,11 @@ export class MagentaClient {
       if (completedOutput === undefined) {
         throw new AgenticApiError(
           "Agentic API returned an invalid response without agent output",
-          response.status,
-          "INVALID_RESPONSE",
+          {
+            status: response.status,
+            code: "INVALID_RESPONSE",
+            requestOutcome: "unknown",
+          },
         );
       }
       return {
@@ -208,16 +255,22 @@ export class MagentaClient {
       if (!data.execution_id) {
         throw new AgenticApiError(
           "Agentic API returned a suspended execution without an execution ID",
-          response.status,
-          "INVALID_RESPONSE",
+          {
+            status: response.status,
+            code: "INVALID_RESPONSE",
+            requestOutcome: "unknown",
+          },
         );
       }
       const interrupts = data.suspend_context?.interrupts;
       if (!interrupts?.length) {
         throw new AgenticApiError(
           "Agentic API returned a suspended execution without interrupt details",
-          response.status,
-          "INVALID_RESPONSE",
+          {
+            status: response.status,
+            code: "INVALID_RESPONSE",
+            requestOutcome: "unknown",
+          },
         );
       }
       return {
@@ -233,8 +286,11 @@ export class MagentaClient {
 
     throw new AgenticApiError(
       `Agentic API returned unsupported execution status: ${data.status ?? "missing"}`,
-      response.status,
-      "INVALID_RESPONSE",
+      {
+        status: response.status,
+        code: "INVALID_RESPONSE",
+        requestOutcome: "unknown",
+      },
     );
   }
 
@@ -244,32 +300,15 @@ export class MagentaClient {
   ): Promise<InvocationResult> {
     const sessionId =
       typeof body.session_id === "string" ? body.session_id : undefined;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (this.config.apiKey) {
-      headers.Authorization = `Bearer ${this.config.apiKey}`;
-    }
-    if (sessionId) {
-      headers["X-Session-ID"] = sessionId;
-    }
-
-    let response: Response;
-    try {
-      response = await this.fetchFn(this.invokeStreamUrl(), {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Agentic stream failed";
-      throw new AgenticApiError(message, 0, "REQUEST_FAILED");
-    }
+    const response = await this.sendRequest(
+      this.invokeStreamUrl(),
+      body,
+      sessionId,
+      "Agentic stream failed",
+    );
 
     if (!response.ok) {
-      const rawBody = await response.text();
+      const rawBody = await readResponseText(response);
       let errorBody: {
         error?: string;
         message?: string;
@@ -281,8 +320,11 @@ export class MagentaClient {
       } catch {
         throw new AgenticApiError(
           `Agentic API returned non-JSON content (HTTP ${response.status})`,
-          response.status,
-          "INVALID_RESPONSE",
+          {
+            status: response.status,
+            code: "INVALID_RESPONSE",
+            requestOutcome: requestOutcomeForResponse(response.status),
+          },
         );
       }
       throw new AgenticApiError(
@@ -290,8 +332,14 @@ export class MagentaClient {
           errorBody.message ??
           errorBody.detail ??
           `Agentic stream failed (HTTP ${response.status})`,
-        response.status,
-        errorBody.code,
+        {
+          status: response.status,
+          code: errorBody.code,
+          requestOutcome: requestOutcomeForResponse(
+            response.status,
+            errorBody.code,
+          ),
+        },
       );
     }
 
@@ -308,8 +356,11 @@ export class MagentaClient {
       if (!parsed.success) {
         throw new AgenticApiError(
           "Agentic stream returned an invalid event",
-          response.status,
-          "INVALID_RESPONSE",
+          {
+            status: response.status,
+            code: "INVALID_RESPONSE",
+            requestOutcome: "unknown",
+          },
         );
       }
       const chunk = parsed.data;
@@ -332,8 +383,11 @@ export class MagentaClient {
           } catch {
             throw new AgenticApiError(
               "Agentic stream returned malformed suspend context",
-              response.status,
-              "INVALID_RESPONSE",
+              {
+                status: response.status,
+                code: "INVALID_RESPONSE",
+                requestOutcome: "unknown",
+              },
             );
           }
         } else {
@@ -344,8 +398,11 @@ export class MagentaClient {
       if (chunk.error) {
         throw new AgenticApiError(
           chunk.error,
-          response.status,
-          chunk.code ?? "EXECUTION_ERROR",
+          {
+            status: response.status,
+            code: chunk.code ?? "EXECUTION_ERROR",
+            requestOutcome: "unknown",
+          },
         );
       }
     }
@@ -353,8 +410,11 @@ export class MagentaClient {
     if (!returnedSessionId) {
       throw new AgenticApiError(
         "Agentic stream returned an invalid response without a session ID",
-        response.status,
-        "INVALID_RESPONSE",
+        {
+          status: response.status,
+          code: "INVALID_RESPONSE",
+          requestOutcome: "unknown",
+        },
       );
     }
     if (suspendedContext !== undefined) {
@@ -362,8 +422,11 @@ export class MagentaClient {
       if (!executionId || !parsedContext.success) {
         throw new AgenticApiError(
           "Agentic stream returned invalid interrupt details",
-          response.status,
-          "INVALID_RESPONSE",
+          {
+            status: response.status,
+            code: "INVALID_RESPONSE",
+            requestOutcome: "unknown",
+          },
         );
       }
       return {
@@ -379,8 +442,11 @@ export class MagentaClient {
     if (!completed || finalContent === undefined) {
       throw new AgenticApiError(
         "Agentic stream ended without a completed result",
-        response.status,
-        "INVALID_RESPONSE",
+        {
+          status: response.status,
+          code: "INVALID_RESPONSE",
+          requestOutcome: "unknown",
+        },
       );
     }
     return {
@@ -389,6 +455,76 @@ export class MagentaClient {
       sessionId: returnedSessionId,
       ...(executionId ? { executionId } : {}),
     };
+  }
+
+  private async sendRequest(
+    url: string,
+    body: Record<string, unknown>,
+    sessionId: string | undefined,
+    fallbackError: string,
+  ): Promise<Response> {
+    const signal = AbortSignal.timeout(this.timeoutMs);
+    for (let attempt = 0; ; attempt += 1) {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      let accessToken: string | undefined;
+      if (this.tokenProvider) {
+        try {
+          accessToken =
+            await this.tokenProvider.getAccessToken(signal);
+        } catch (error) {
+          throw new AgenticApiError(
+            "Agentic service-account authentication failed",
+            {
+              status:
+                error instanceof AgenticAuthenticationError
+                  ? error.status
+                  : 0,
+              code: "AUTHENTICATION_FAILED",
+              requestOutcome:
+                attempt === 0 ? "not_sent" : "rejected",
+              cause: error,
+            },
+          );
+        }
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+      if (sessionId) {
+        headers["X-Session-ID"] = sessionId;
+      }
+
+      let response: Response;
+      try {
+        response = await this.fetchFn(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : fallbackError;
+        throw new AgenticApiError(message, {
+          status: 0,
+          code: "REQUEST_FAILED",
+          requestOutcome: "unknown",
+          cause: error,
+        });
+      }
+
+      if (
+        response.status === 401 &&
+        this.tokenProvider &&
+        accessToken &&
+        attempt === 0
+      ) {
+        await response.body?.cancel().catch(() => undefined);
+        this.tokenProvider.invalidate(accessToken);
+        continue;
+      }
+      return response;
+    }
   }
 
   private invokeUrl(): string {
@@ -407,6 +543,38 @@ export class MagentaClient {
     const projectId = encodeURIComponent(this.config.projectId);
     const workspaceId = encodeURIComponent(this.config.workspaceId);
     return `${this.config.baseUrl}/api/v1/projects/${projectId}/workspaces/${workspaceId}/invokeStream`;
+  }
+}
+
+const CONFIRMED_REJECTION_STATUSES = new Set([
+  400, 401, 403, 404, 422,
+]);
+
+function requestOutcomeForResponse(
+  status: number,
+  code?: string,
+): AgenticRequestOutcome {
+  return code === "RESUME_INPUT_INVALID" ||
+    CONFIRMED_REJECTION_STATUSES.has(status)
+    ? "rejected"
+    : "unknown";
+}
+
+async function readResponseText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch (error) {
+    throw new AgenticApiError(
+      "Agentic API response body could not be read",
+      {
+        status: response.status,
+        code: "INVALID_RESPONSE",
+        requestOutcome: response.ok
+          ? "unknown"
+          : requestOutcomeForResponse(response.status),
+        cause: error,
+      },
+    );
   }
 }
 
@@ -436,8 +604,11 @@ async function* readSseData(
   if (!response.body) {
     throw new AgenticApiError(
       "Agentic stream returned an empty response body",
-      response.status,
-      "INVALID_RESPONSE",
+      {
+        status: response.status,
+        code: "INVALID_RESPONSE",
+        requestOutcome: "unknown",
+      },
     );
   }
   const reader = response.body.getReader();
@@ -458,8 +629,11 @@ async function* readSseData(
           } catch {
             throw new AgenticApiError(
               "Agentic stream returned malformed JSON",
-              response.status,
-              "INVALID_RESPONSE",
+              {
+                status: response.status,
+                code: "INVALID_RESPONSE",
+                requestOutcome: "unknown",
+              },
             );
           }
         }

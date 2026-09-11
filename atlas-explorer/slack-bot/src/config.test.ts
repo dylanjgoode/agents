@@ -4,7 +4,8 @@ import { loadConfig } from "./config.js";
 
 const sharedEnv = {
   SLACK_BOT_TOKEN: "xoxb-test",
-  AGENTIC_API_KEY: "agp_test",
+  AGENTIC_SA_CLIENT_ID: "agp_sa_id_test",
+  AGENTIC_SA_CLIENT_SECRET: "agp_sa_sk_test",
   AGENTIC_PROJECT_ID: "project-1",
   AGENTIC_WORKSPACE_ID: "workspace-1",
   CHAT_ALLOWED_USER_IDS: "slack:U123",
@@ -31,10 +32,13 @@ describe("loadConfig", () => {
         botToken: "xoxb-test",
       },
       agentic: {
-        apiKey: "agp_test",
         baseUrl: "https://agentic-platform.mongodb.com",
         invokeTarget: "gateway",
         projectId: "project-1",
+        serviceAccount: {
+          clientId: "agp_sa_id_test",
+          clientSecret: "agp_sa_sk_test",
+        },
         workspaceId: "workspace-1",
       },
       store: {
@@ -125,7 +129,8 @@ describe("loadConfig", () => {
         SLACK_APP_TOKEN: "xapp-test",
         AGENTIC_INVOKE_TARGET: "local",
         AGENTIC_BASE_URL: "",
-        AGENTIC_API_KEY: "",
+        AGENTIC_SA_CLIENT_ID: "",
+        AGENTIC_SA_CLIENT_SECRET: "",
         AGENTIC_PROJECT_ID: "",
         AGENTIC_WORKSPACE_ID: "",
         SLACK_SIGNING_SECRET: "",
@@ -134,12 +139,31 @@ describe("loadConfig", () => {
       "socket",
     );
 
-    expect(config.agentic.invokeTarget).toBe("local");
-    expect(config.agentic.baseUrl).toBe("http://localhost:3000");
-    expect(config.agentic.apiKey).toBeUndefined();
-    expect(config.agentic.projectId).toBe("local");
-    expect(config.agentic.workspaceId).toBe("local");
+    expect(config.agentic).toEqual({
+      baseUrl: "http://localhost:3000",
+      invokeTarget: "local",
+    });
   });
+
+  it.each([
+    ["AGENTIC_SA_CLIENT_ID", undefined, "agp_sa_sk_test"],
+    ["AGENTIC_SA_CLIENT_SECRET", "agp_sa_id_test", undefined],
+  ] as const)(
+    "rejects a partial service-account pair missing %s",
+    (missingVariable, clientId, clientSecret) => {
+      expect(() =>
+        loadConfig(
+          {
+            ...sharedEnv,
+            AGENTIC_SA_CLIENT_ID: clientId,
+            AGENTIC_SA_CLIENT_SECRET: clientSecret,
+            SLACK_APP_TOKEN: "xapp-test",
+          },
+          "socket",
+        ),
+      ).toThrow(new RegExp(missingVariable));
+    },
+  );
 
   it("identifies missing shared credentials by environment variable name", () => {
     expect(() =>
@@ -149,6 +173,8 @@ describe("loadConfig", () => {
         },
         "socket",
       ),
-    ).toThrow(/SLACK_BOT_TOKEN.*AGENTIC_API_KEY.*AGENTIC_PROJECT_ID.*AGENTIC_WORKSPACE_ID/s);
+    ).toThrow(
+      /SLACK_BOT_TOKEN.*AGENTIC_SA_CLIENT_ID.*AGENTIC_SA_CLIENT_SECRET.*AGENTIC_PROJECT_ID.*AGENTIC_WORKSPACE_ID/s,
+    );
   });
 });
