@@ -50,7 +50,6 @@ const environmentSchema = z
     SLACK_APP_TOKEN: optionalString,
     SLACK_BOT_DISPLAY_NAME: optionalString,
     CHAT_ALLOWED_USER_IDS: optionalString,
-    SLACK_ALLOWED_USER_IDS: optionalString,
     AGENTIC_BASE_URL: optionalUrl,
     THREAD_STORE_DB: optionalString,
   })
@@ -93,18 +92,14 @@ export function loadConfig(
       path: ["MONGODB_URI"],
     });
   }
-  const configuredAllowlist =
-    parsed.CHAT_ALLOWED_USER_IDS ??
-    parsed.SLACK_ALLOWED_USER_IDS;
   if (
-    !configuredAllowlist?.split(",").some(
+    !parsed.CHAT_ALLOWED_USER_IDS?.split(",").some(
       (actorId) => actorId.trim().length > 0,
     )
   ) {
     issues.push({
       code: "custom",
-      message:
-        "is required (SLACK_ALLOWED_USER_IDS remains supported during migration)",
+      message: "is required",
       path: ["CHAT_ALLOWED_USER_IDS"],
     });
   }
@@ -153,22 +148,13 @@ export function loadConfig(
   }
 
   const values = result.data;
-  const usingLegacyAllowlist = !values.CHAT_ALLOWED_USER_IDS;
   const allowedActorIds = [
     ...new Set(
-      (
-        values.CHAT_ALLOWED_USER_IDS ??
-        values.SLACK_ALLOWED_USER_IDS ??
-        ""
-      )
+      (values.CHAT_ALLOWED_USER_IDS ?? "")
         .split(",")
         .map((actorId) => actorId.trim())
         .filter(Boolean)
-        .map((actorId) =>
-          usingLegacyAllowlist
-            ? `slack:${actorId}`
-            : normalizePlatformPrefix(actorId),
-        ),
+        .map(normalizePlatformPrefix),
     ),
   ];
   return {

@@ -43,6 +43,10 @@ export async function handleConversationMessage(
     dependencies.authorizedActorIds &&
     !dependencies.authorizedActorIds.has(input.actorId)
   ) {
+    dependencies.logger?.warn?.(
+      "Rejected unauthorized actor",
+      { actorId: input.actorId },
+    );
     await dependencies.conversation.post(
       "You are not authorized to use this Atlas Explorer bot.",
     );

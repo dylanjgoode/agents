@@ -78,23 +78,6 @@ describe("loadConfig", () => {
     ]);
   });
 
-  it("translates the legacy Slack allowlist when the chat allowlist is absent", () => {
-    const config = loadConfig(
-      {
-        ...sharedEnv,
-        CHAT_ALLOWED_USER_IDS: undefined,
-        SLACK_ALLOWED_USER_IDS: " U123, U456 ,U123 ",
-        SLACK_APP_TOKEN: "xapp-test",
-      },
-      "socket",
-    );
-
-    expect(config.chat.allowedActorIds).toEqual([
-      "slack:U123",
-      "slack:U456",
-    ]);
-  });
-
   it("rejects unqualified IDs in the new cross-platform allowlist", () => {
     expect(() =>
       loadConfig(
