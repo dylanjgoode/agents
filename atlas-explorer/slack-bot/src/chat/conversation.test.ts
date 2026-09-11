@@ -71,6 +71,7 @@ describe("handleConversationMessage", () => {
 
   it("enforces a platform-neutral allowlist", async () => {
     agent.invokeResult = completed;
+    const logger = { error: vi.fn(), warn: vi.fn() };
 
     await handleConversationMessage(
       {
@@ -82,6 +83,7 @@ describe("handleConversationMessage", () => {
       {
         agent,
         conversation,
+        logger,
         store,
         authorizedActorIds: new Set(["discord:U123"]),
       },
@@ -89,6 +91,9 @@ describe("handleConversationMessage", () => {
 
     expect(agent.invokeInputs).toEqual([]);
     expect(conversation.messages[0]).toMatch(/not authorized/i);
+    expect(logger.warn).toHaveBeenCalledWith("Rejected unauthorized actor", {
+      actorId: ACTOR_ID,
+    });
   });
 
   it("stores every interrupt and posts a cross-platform review card", async () => {

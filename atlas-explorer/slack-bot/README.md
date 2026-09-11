@@ -94,6 +94,26 @@ environment.
 refuses to start without an explicit allowlist because every permitted user
 acts through the Magenta workspace's shared Atlas identity.
 
+### Authorize scheduled Workflow Builder messages
+
+Slack sends a scheduled Workflow Builder message as the workflow's bot, not as
+the person who created the workflow. Run the workflow once, then inspect the
+bot's logs for:
+
+```text
+Rejected unauthorized actor { actorId: 'slack:B0123456789' }
+```
+
+Add that exact `slack:B...` actor to `CHAT_ALLOWED_USER_IDS` alongside the
+trusted human actors, redeploy, and run the workflow again. Do not use the
+`Wf...` workflow ID shown in Slack's workflow UI; it is not the message author
+ID used by the allowlist.
+
+Only allow trusted workflows. Anyone who can edit an allowed workflow can
+change the prompt that it runs through the workspace's shared Atlas identity.
+This pattern is intended for read-only scheduled reports: a workflow bot cannot
+click the Approve/Reject controls required for persistent mutations.
+
 ### Invoke the agent locally too
 
 To run the Slack bot and Atlas Explorer agent without deploying either one,
@@ -173,9 +193,7 @@ export VERCEL_URL=https://atlas-explorer-three.vercel.app
 
    Enter raw values only, without surrounding shell quotes or a
    `VARIABLE_NAME=` prefix. `CHAT_ALLOWED_USER_IDS` requires qualified values
-   such as `slack:U0123456789`. The legacy `SLACK_ALLOWED_USER_IDS` requires
-   unqualified values such as `U0123456789` because the bot adds `slack:`
-   automatically.
+   such as `slack:U0123456789`.
 
    Use a project-scoped Agentic service account with the `AGENT_DEVELOPER`
    role. Vercel uses dynamic outbound IPs, so do not restrict this development
@@ -305,10 +323,6 @@ metadata use the shared conservative fallback and never assume an ambiguous
 delivery failed.
 
 ## Migration compatibility
-
-`SLACK_ALLOWED_USER_IDS` remains accepted when `CHAT_ALLOWED_USER_IDS` is
-absent; its member IDs are translated to `slack:<member-id>`. The new variable
-takes precedence when both are set.
 
 Existing records in the `slack_threads` collection are copied lazily into the
 platform-neutral `chat_threads` collection on first thread activity. Session
