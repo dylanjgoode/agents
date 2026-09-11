@@ -5,7 +5,7 @@ import {
 } from "@chat-adapter/tests";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Author } from "chat";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { FakeAgentGateway, completed } from "./chat/handlers.test-helpers.js";
 import type { SlackBotConfig } from "./config.js";
@@ -77,6 +77,40 @@ describe("Chat SDK runtime", () => {
     expect(agent.invokeInputs).toEqual([]);
     await runtime.bot.shutdown();
   });
+
+  it("routes handler failures through the runtime logger", async () => {
+    const adapter = createMockAdapter("slack", {
+      botUserId: "B123",
+      isDM: () => true,
+    }) as SlackAdapter;
+    const agent = new FakeAgentGateway();
+    const failure = new Error("gateway unavailable");
+    agent.invokeError = failure;
+    const logger = { error: vi.fn() };
+    const runtime = await createRuntime(config(), {
+      agent,
+      logger,
+      slackAdapter: adapter,
+      state: createMockState(),
+      store: new MemoryThreadStore(),
+    });
+    await runtime.bot.initialize();
+
+    await runtime.bot.processMessage(
+      adapter,
+      "slack:D123:1720000000.000100",
+      createTestMessage("event-1", "List projects", {
+        threadId: "slack:D123:1720000000.000100",
+        author: author(),
+      }),
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "Atlas Explorer invocation failed",
+      failure,
+    );
+    await runtime.bot.shutdown();
+  });
 });
 
 function config(): SlackBotConfig {
@@ -93,8 +127,6 @@ function config(): SlackBotConfig {
     agentic: {
       baseUrl: "http://localhost:3000",
       invokeTarget: "local",
-      projectId: "local",
-      workspaceId: "local",
     },
     store: {
       databaseName: "atlas_explorer_test",

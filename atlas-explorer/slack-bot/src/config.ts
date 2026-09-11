@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { AgenticClientConfig } from "./magenta/types.js";
+
 export type RuntimeMode = "socket" | "http";
 
 export interface SlackBotConfig {
@@ -13,13 +15,7 @@ export interface SlackBotConfig {
     signingSecret?: string;
     botDisplayName: string;
   };
-  agentic: {
-    baseUrl: string;
-    apiKey?: string;
-    projectId: string;
-    workspaceId: string;
-    invokeTarget: "gateway" | "local";
-  };
+  agentic: AgenticClientConfig;
   store: {
     mongoUri?: string;
     databaseName: string;
@@ -41,7 +37,8 @@ const optionalUrl = z.preprocess(
 const environmentSchema = z
   .object({
     SLACK_BOT_TOKEN: requiredString,
-    AGENTIC_API_KEY: optionalString,
+    AGENTIC_SA_CLIENT_ID: optionalString,
+    AGENTIC_SA_CLIENT_SECRET: optionalString,
     AGENTIC_PROJECT_ID: optionalString,
     AGENTIC_WORKSPACE_ID: optionalString,
     AGENTIC_INVOKE_TARGET: z
@@ -134,7 +131,8 @@ export function loadConfig(
       : "gateway";
   if (invokeTarget === "gateway") {
     for (const variable of [
-      "AGENTIC_API_KEY",
+      "AGENTIC_SA_CLIENT_ID",
+      "AGENTIC_SA_CLIENT_SECRET",
       "AGENTIC_PROJECT_ID",
       "AGENTIC_WORKSPACE_ID",
     ] as const) {
@@ -188,24 +186,43 @@ export function loadConfig(
         : {}),
       botDisplayName: values.SLACK_BOT_DISPLAY_NAME ?? "AtlasExplorer",
     },
-    agentic: {
-      baseUrl: (
-        values.AGENTIC_BASE_URL ??
-        (values.AGENTIC_INVOKE_TARGET === "local"
-          ? "http://localhost:3000"
-          : "https://agentic-platform.mongodb.com")
-      ).replace(/\/+$/, ""),
-      ...(values.AGENTIC_API_KEY
-        ? { apiKey: values.AGENTIC_API_KEY }
-        : {}),
-      projectId: values.AGENTIC_PROJECT_ID ?? "local",
-      workspaceId: values.AGENTIC_WORKSPACE_ID ?? "local",
-      invokeTarget: values.AGENTIC_INVOKE_TARGET,
-    },
+    agentic: buildAgenticConfig(values, invokeTarget),
     store: {
       ...(values.MONGODB_URI ? { mongoUri: values.MONGODB_URI } : {}),
       databaseName: values.THREAD_STORE_DB ?? "atlas_explorer_slack",
     },
+  };
+}
+
+function buildAgenticConfig(
+  values: z.infer<typeof environmentSchema>,
+  invokeTarget: "gateway" | "local",
+): AgenticClientConfig {
+  const baseUrl = (
+    values.AGENTIC_BASE_URL ??
+    (invokeTarget === "local"
+      ? "http://localhost:3000"
+      : "https://agentic-platform.mongodb.com")
+  ).replace(/\/+$/, "");
+  if (invokeTarget === "local") {
+    return { baseUrl, invokeTarget };
+  }
+
+  const clientId = values.AGENTIC_SA_CLIENT_ID;
+  const clientSecret = values.AGENTIC_SA_CLIENT_SECRET;
+  const projectId = values.AGENTIC_PROJECT_ID;
+  const workspaceId = values.AGENTIC_WORKSPACE_ID;
+  if (!clientId || !clientSecret || !projectId || !workspaceId) {
+    throw new Error(
+      "Gateway configuration was not validated before construction",
+    );
+  }
+  return {
+    baseUrl,
+    invokeTarget,
+    projectId,
+    serviceAccount: { clientId, clientSecret },
+    workspaceId,
   };
 }
 

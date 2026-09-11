@@ -128,8 +128,11 @@ describe("handleReviewDecision", () => {
     await seedPendingReview(store);
     agent.resumeError = new AgenticApiError(
       "response lost",
-      0,
-      "REQUEST_FAILED",
+      {
+        status: 0,
+        code: "REQUEST_FAILED",
+        requestOutcome: "unknown",
+      },
     );
 
     const outcome = await handleReviewDecision(
@@ -149,12 +152,45 @@ describe("handleReviewDecision", () => {
     expect(conversation.reviewStatuses).toEqual(["uncertain"]);
   });
 
+  it("keeps a review pending when authentication fails before dispatch", async () => {
+    await seedPendingReview(store);
+    agent.resumeError = new AgenticApiError(
+      "token endpoint unavailable",
+      {
+        status: 0,
+        code: "AUTHENTICATION_FAILED",
+        requestOutcome: "not_sent",
+      },
+    );
+
+    const outcome = await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: ACTOR_ID,
+        decision: "approve",
+      },
+      { agent, conversation, store },
+    );
+
+    expect(outcome).toBe("failed");
+    expect(await store.get(THREAD_ID)).toMatchObject({
+      pendingReviewState: "pending",
+    });
+    expect(conversation.messages).toContain(
+      "Atlas Explorer could not apply that decision. The review is still pending; please try again.",
+    );
+  });
+
   it("keeps a confirmed-invalid resume pending for another attempt", async () => {
     await seedPendingReview(store);
     agent.resumeError = new AgenticApiError(
       "invalid resume map",
-      409,
-      "RESUME_INPUT_INVALID",
+      {
+        status: 409,
+        code: "RESUME_INPUT_INVALID",
+        requestOutcome: "rejected",
+      },
     );
 
     const outcome = await handleReviewDecision(

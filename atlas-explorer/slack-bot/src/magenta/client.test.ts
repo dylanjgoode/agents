@@ -7,10 +7,24 @@ import {
 
 const config = {
   baseUrl: "https://agentic.example.test/",
-  apiKey: "agp_test",
+  invokeTarget: "gateway" as const,
   projectId: "project/id",
+  serviceAccount: {
+    clientId: "agp_sa_id_test",
+    clientSecret: "agp_sa_sk_test",
+  },
   workspaceId: "workspace id",
 };
+
+function gatewayClient(fetchFn: typeof fetch): MagentaClient {
+  return new MagentaClient(config, {
+    fetchFn,
+    tokenProvider: {
+      getAccessToken: () => Promise.resolve("service-account-token"),
+      invalidate: () => undefined,
+    },
+  });
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -38,7 +52,248 @@ function streamResponse(
   );
 }
 
+function unreadableResponse(status: number): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.error(new Error("response body lost"));
+      },
+    }),
+    { status },
+  );
+}
+
 describe("MagentaClient", () => {
+  it("exchanges service-account credentials before invoking the gateway", async () => {
+    const fetchFn = vi.fn<typeof fetch>(
+      async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/oauth/token")) {
+          expect(init?.headers).toEqual({
+            Authorization: `Basic ${Buffer.from(
+              "agp_sa_id_test:agp_sa_sk_test",
+            ).toString("base64")}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          });
+          expect(String(init?.body)).toBe(
+            "grant_type=client_credentials",
+          );
+          return jsonResponse({
+            access_token: "service-account-token",
+            token_type: "Bearer",
+            expires_in: 3600,
+          });
+        }
+        expect(init?.headers).toEqual({
+          Authorization: "Bearer service-account-token",
+          "Content-Type": "application/json",
+        });
+        return jsonResponse({
+          success: true,
+          response: "There are three projects.",
+          session_id: "session-1",
+          status: "completed",
+        });
+      },
+    );
+    const client = new MagentaClient(config, { fetchFn });
+
+    await expect(
+      client.invoke({
+        message: "List projects",
+        actorId: "slack:U123",
+      }),
+    ).resolves.toMatchObject({
+      kind: "completed",
+      sessionId: "session-1",
+    });
+
+    expect(fetchFn.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://agentic.example.test/api/v1/oauth/token",
+      "https://agentic.example.test/api/v1/projects/project%2Fid/workspaces/workspace%20id/invoke",
+    ]);
+  });
+
+  it("refreshes authentication once when the gateway rejects a token", async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { success: false, error: "expired access token" },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          response: "Authenticated.",
+          session_id: "session-1",
+          status: "completed",
+        }),
+      );
+    const tokenProvider = {
+      getAccessToken: vi
+        .fn()
+        .mockResolvedValueOnce("expired-token")
+        .mockResolvedValueOnce("fresh-token"),
+      invalidate: vi.fn(),
+    };
+    const client = new MagentaClient(config, {
+      fetchFn,
+      tokenProvider,
+    });
+
+    await expect(
+      client.invoke({ message: "Hello", actorId: "slack:U123" }),
+    ).resolves.toMatchObject({
+      kind: "completed",
+      response: "Authenticated.",
+    });
+
+    expect(tokenProvider.invalidate).toHaveBeenCalledWith(
+      "expired-token",
+    );
+    expect(tokenProvider.getAccessToken).toHaveBeenCalledTimes(2);
+    expect(
+      fetchFn.mock.calls.map(([, init]) => init?.headers),
+    ).toEqual([
+      {
+        Authorization: "Bearer expired-token",
+        "Content-Type": "application/json",
+      },
+      {
+        Authorization: "Bearer fresh-token",
+        "Content-Type": "application/json",
+      },
+    ]);
+  });
+
+  it("shares one deadline across authentication and a 401 retry", async () => {
+    const tokenSignals: Array<AbortSignal | undefined> = [];
+    const requestSignals: Array<AbortSignal | null | undefined> = [];
+    const getAccessToken = vi
+      .fn((signal?: AbortSignal) => {
+        tokenSignals.push(signal);
+        return Promise.resolve(
+          tokenSignals.length === 1 ? "expired-token" : "fresh-token",
+        );
+      });
+    const fetchFn = vi.fn<typeof fetch>(async (_input, init) => {
+      requestSignals.push(init?.signal);
+      return requestSignals.length === 1
+        ? jsonResponse({ error: "expired access token" }, 401)
+        : jsonResponse({
+            success: true,
+            response: "Authenticated.",
+            session_id: "session-1",
+            status: "completed",
+          });
+    });
+    const client = new MagentaClient(config, {
+      fetchFn,
+      timeoutMs: 1_000,
+      tokenProvider: {
+        getAccessToken,
+        invalidate: () => undefined,
+      },
+    });
+
+    await client.invoke({
+      message: "Hello",
+      actorId: "slack:U123",
+    });
+
+    expect(tokenSignals).toHaveLength(2);
+    expect(requestSignals).toHaveLength(2);
+    expect(tokenSignals[0]).toBeInstanceOf(AbortSignal);
+    expect(tokenSignals[0]).toBe(tokenSignals[1]);
+    expect(tokenSignals[0]).toBe(requestSignals[0]);
+    expect(tokenSignals[0]).toBe(requestSignals[1]);
+  });
+
+  it("reports a token acquisition failure before dispatching the request", async () => {
+    const authenticationError = new Error("token endpoint unavailable");
+    const fetchFn = vi.fn<typeof fetch>();
+    const client = new MagentaClient(config, {
+      fetchFn,
+      tokenProvider: {
+        getAccessToken: () => Promise.reject(authenticationError),
+        invalidate: () => undefined,
+      },
+    });
+
+    const request = client.resume({
+      sessionId: "session-1",
+      actorId: "slack:U123",
+      interruptId: "interrupt-1",
+      decision: { type: "approve" },
+    });
+
+    await expect(request).rejects.toMatchObject({
+      name: "AgenticApiError",
+      code: "AUTHENTICATION_FAILED",
+      requestOutcome: "not_sent",
+      cause: authenticationError,
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("preserves a rejected outcome when a blocking error body cannot be read", async () => {
+    const client = new MagentaClient(
+      {
+        baseUrl: "http://localhost:3000",
+        invokeTarget: "local",
+      },
+      {
+        fetchFn: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(unreadableResponse(422)),
+      },
+    );
+
+    await expect(
+      client.resume({
+        sessionId: "session-1",
+        actorId: "slack:U123",
+        interruptId: "interrupt-1",
+        decision: { type: "approve" },
+      }),
+    ).rejects.toMatchObject({
+      name: "AgenticApiError",
+      code: "INVALID_RESPONSE",
+      requestOutcome: "rejected",
+      status: 422,
+    });
+  });
+
+  it("preserves a rejected outcome when a streaming error body cannot be read", async () => {
+    const client = new MagentaClient(
+      {
+        baseUrl: "http://localhost:3000",
+        invokeTarget: "local",
+      },
+      {
+        fetchFn: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(unreadableResponse(422)),
+      },
+    );
+
+    await expect(
+      client.resumeStream({
+        sessionId: "session-1",
+        actorId: "slack:U123",
+        interruptId: "interrupt-1",
+        decision: { type: "approve" },
+      }),
+    ).rejects.toMatchObject({
+      name: "AgenticApiError",
+      code: "INVALID_RESPONSE",
+      requestOutcome: "rejected",
+      status: 422,
+    });
+  });
+
   it("invokes Atlas Explorer and returns its session", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
@@ -49,7 +304,7 @@ describe("MagentaClient", () => {
         status: "completed",
       }),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await expect(
       client.invoke({
@@ -68,7 +323,7 @@ describe("MagentaClient", () => {
       "https://agentic.example.test/api/v1/projects/project%2Fid/workspaces/workspace%20id/invoke",
     );
     expect(init?.headers).toEqual({
-      Authorization: "Bearer agp_test",
+      Authorization: "Bearer service-account-token",
       "Content-Type": "application/json",
     });
     expect(JSON.parse(String(init?.body))).toEqual({
@@ -93,7 +348,7 @@ describe("MagentaClient", () => {
         },
       ),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await expect(
       client.invoke({
@@ -119,8 +374,6 @@ describe("MagentaClient", () => {
     const client = new MagentaClient(
       {
         baseUrl: "http://localhost:3000",
-        projectId: "local",
-        workspaceId: "local",
         invokeTarget: "local",
       },
       { fetchFn },
@@ -183,8 +436,6 @@ describe("MagentaClient", () => {
     const client = new MagentaClient(
       {
         baseUrl: "http://localhost:3000",
-        projectId: "local",
-        workspaceId: "local",
         invokeTarget: "local",
       },
       { fetchFn },
@@ -235,7 +486,7 @@ describe("MagentaClient", () => {
         "gateway-session",
       ),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await client.invokeStream(
       { message: "List projects", actorId: "slack:U123" },
@@ -276,7 +527,7 @@ describe("MagentaClient", () => {
         },
       ]),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await expect(
       client.invokeStream(
@@ -315,7 +566,7 @@ describe("MagentaClient", () => {
         null,
       ),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await expect(
       client.invokeStream(
@@ -343,8 +594,6 @@ describe("MagentaClient", () => {
     const client = new MagentaClient(
       {
         baseUrl: "http://localhost:3000",
-        projectId: "local",
-        workspaceId: "local",
         invokeTarget: "local",
       },
       { fetchFn },
@@ -386,8 +635,6 @@ describe("MagentaClient", () => {
     const client = new MagentaClient(
       {
         baseUrl: "http://localhost:3000",
-        projectId: "local",
-        workspaceId: "local",
         invokeTarget: "local",
       },
       { fetchFn },
@@ -422,7 +669,7 @@ describe("MagentaClient", () => {
         status: "completed",
       }),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await client.invoke({
       message: "What about the first one?",
@@ -432,7 +679,7 @@ describe("MagentaClient", () => {
 
     const [, init] = fetchFn.mock.calls[0]!;
     expect(init?.headers).toEqual({
-      Authorization: "Bearer agp_test",
+      Authorization: "Bearer service-account-token",
       "Content-Type": "application/json",
       "X-Session-ID": "session-1",
     });
@@ -480,7 +727,7 @@ describe("MagentaClient", () => {
         },
       }),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await expect(
       client.invoke({
@@ -521,7 +768,7 @@ describe("MagentaClient", () => {
         status: "completed",
       }),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await client.resume({
       sessionId: "session-1",
@@ -550,7 +797,7 @@ describe("MagentaClient", () => {
         session_id: "session-1",
       }),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await client.resume({
       sessionId: "session-1",
@@ -595,7 +842,7 @@ describe("MagentaClient", () => {
         409,
       ),
     );
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     const request = client.invoke({
       message: "Another request",
@@ -626,7 +873,7 @@ describe("MagentaClient", () => {
           status,
         }),
       );
-      const client = new MagentaClient(config, { fetchFn });
+      const client = gatewayClient(fetchFn);
 
       await expect(
         client.invoke({
@@ -645,7 +892,7 @@ describe("MagentaClient", () => {
     const fetchFn = vi
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse({ success: true, status: "completed" }));
-    const client = new MagentaClient(config, { fetchFn });
+    const client = gatewayClient(fetchFn);
 
     await expect(
       client.invoke({ message: "Hello", actorId: "slack:U123" }),

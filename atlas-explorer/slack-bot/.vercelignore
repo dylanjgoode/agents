@@ -1,0 +1,8 @@
+dist
+**/*.test.ts
+**/*.test-helpers.ts
+.env.example
+README.md
+manifest.json
+tsconfig.test.json
+vitest.config.ts

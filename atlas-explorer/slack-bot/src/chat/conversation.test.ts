@@ -155,6 +155,9 @@ describe("handleConversationMessage", () => {
     agent.invokeResult = completed;
     conversation.deliveryError = new Error("delivery failed");
     let now = new Date("2026-09-09T12:00:00.000Z");
+    store = new MemoryThreadStore({
+      now: () => now.getTime(),
+    });
     const original = {
       threadId: THREAD_ID,
       eventId: "event-1",
@@ -199,6 +202,9 @@ describe("handleConversationMessage", () => {
     conversation.deliveryError = new Error("response lost");
     conversation.acceptDeliveryBeforeError = true;
     let now = new Date("2026-09-09T12:00:00.000Z");
+    store = new MemoryThreadStore({
+      now: () => now.getTime(),
+    });
     const input = {
       threadId: THREAD_ID,
       eventId: "event-1",

@@ -1,12 +1,25 @@
 import { z } from "zod";
 
-export interface AgenticClientConfig {
+interface AgenticClientBaseConfig {
   baseUrl: string;
-  apiKey?: string;
-  projectId: string;
-  workspaceId: string;
-  invokeTarget?: "gateway" | "local";
 }
+
+export type AgenticClientConfig =
+  | (AgenticClientBaseConfig & {
+      invokeTarget: "gateway";
+      projectId: string;
+      serviceAccount: {
+        clientId: string;
+        clientSecret: string;
+      };
+      workspaceId: string;
+    })
+  | (AgenticClientBaseConfig & {
+      invokeTarget: "local";
+      projectId?: never;
+      serviceAccount?: never;
+      workspaceId?: never;
+    });
 
 export const agentActionRequestSchema = z.object({
   name: z.string().min(1),
