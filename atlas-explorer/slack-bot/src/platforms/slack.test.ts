@@ -10,30 +10,144 @@ import {
   createSlackDeliveryBoundary,
   parseSlackReviewInterruptId,
   registerSlackPlatformHandlers,
-  truncateSlackResponse,
 } from "./slack.js";
 
 describe("Slack platform boundary", () => {
-  it("posts durable responses with Slack-only delivery metadata", async () => {
+  it("posts durable responses as native Slack markdown with delivery metadata", async () => {
     const postMessage = vi.fn().mockResolvedValue({ ts: "2" });
     const adapter = fakeSlackAdapter({ postMessage });
     const boundary = createSlackDeliveryBoundary(adapter);
 
     await boundary.deliver(
       fakeThread(adapter),
-      "Three projects found.",
+      "## Three projects\n\n- Project one",
       "delivery-1",
     );
 
     expect(postMessage).toHaveBeenCalledWith({
       channel: "C123",
       thread_ts: "1720000000.000100",
-      text: "Three projects found.",
+      markdown_text: "## Three projects\n\n- Project one",
       metadata: {
         event_type: "atlas_explorer_responded",
         event_payload: { delivery_id: "delivery-1" },
       },
     });
+  });
+
+  it("splits oversized markdown at a paragraph boundary and marks the final message delivered", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ts: "2" });
+    const adapter = fakeSlackAdapter({ postMessage });
+    const boundary = createSlackDeliveryBoundary(adapter);
+    const firstSection = "a".repeat(11_900);
+    const finalSection = `## Next section\n\n${"b".repeat(200)}`;
+
+    await boundary.deliver(
+      fakeThread(adapter),
+      `${firstSection}\n\n${finalSection}`,
+      "delivery-1",
+    );
+
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(postMessage).toHaveBeenNthCalledWith(1, {
+      channel: "C123",
+      thread_ts: "1720000000.000100",
+      markdown_text: `${firstSection}\n\n`,
+      metadata: {
+        event_type: "atlas_explorer_responded",
+        event_payload: { delivery_id: "delivery-1:chunk:0:2" },
+      },
+    });
+    expect(postMessage).toHaveBeenNthCalledWith(2, {
+      channel: "C123",
+      thread_ts: "1720000000.000100",
+      markdown_text: finalSection,
+      metadata: {
+        event_type: "atlas_explorer_responded",
+        event_payload: { delivery_id: "delivery-1" },
+      },
+    });
+  });
+
+  it("does not repost a completed prefix chunk during delivery recovery", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ts: "2" });
+    const replies = vi.fn().mockResolvedValue({
+      messages: [
+        {
+          metadata: {
+            event_type: "atlas_explorer_responded",
+            event_payload: {
+              delivery_id: "delivery-1:chunk:0:2",
+            },
+          },
+        },
+      ],
+    });
+    const adapter = fakeSlackAdapter({ postMessage, replies });
+    const boundary = createSlackDeliveryBoundary(adapter);
+    const firstSection = "a".repeat(11_900);
+    const finalSection = `## Next section\n\n${"b".repeat(200)}`;
+
+    await boundary.deliver(
+      fakeThread(adapter),
+      `${firstSection}\n\n${finalSection}`,
+      "delivery-1",
+    );
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({
+      channel: "C123",
+      thread_ts: "1720000000.000100",
+      markdown_text: finalSection,
+      metadata: {
+        event_type: "atlas_explorer_responded",
+        event_payload: { delivery_id: "delivery-1" },
+      },
+    });
+  });
+
+  it("caps every markdown payload when no natural split boundary exists", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ts: "2" });
+    const adapter = fakeSlackAdapter({ postMessage });
+    const boundary = createSlackDeliveryBoundary(adapter);
+    const response = "x".repeat(24_001);
+
+    await boundary.deliver(
+      fakeThread(adapter),
+      response,
+      "delivery-1",
+    );
+
+    const payloads = postMessage.mock.calls.map(
+      ([payload]) =>
+        (payload as { markdown_text: string }).markdown_text,
+    );
+    expect(payloads.map((payload) => payload.length)).toEqual([
+      12_000, 12_000, 1,
+    ]);
+    expect(payloads.join("")).toBe(response);
+  });
+
+  it("does not split an emoji's UTF-16 surrogate pair across messages", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ts: "2" });
+    const adapter = fakeSlackAdapter({ postMessage });
+    const boundary = createSlackDeliveryBoundary(adapter);
+    const response = `${"x".repeat(11_999)}😀tail`;
+
+    await boundary.deliver(
+      fakeThread(adapter),
+      response,
+      "delivery-1",
+    );
+
+    const payloads = postMessage.mock.calls.map(
+      ([payload]) =>
+        (payload as { markdown_text: string }).markdown_text,
+    );
+    expect(payloads.map((payload) => payload.length)).toEqual([
+      11_999, 6,
+    ]);
+    expect(payloads.join("")).toBe(response);
   });
 
   it("reconciles accepted responses across paginated Slack replies", async () => {
@@ -70,15 +184,6 @@ describe("Slack platform boundary", () => {
       limit: 100,
       cursor: "next",
     });
-  });
-
-  it("keeps Slack size limits out of the shared core", () => {
-    const oversized = "x".repeat(40_000);
-
-    const truncated = truncateSlackResponse(oversized);
-
-    expect(truncated.length).toBeLessThanOrEqual(38_000);
-    expect(truncated).toMatch(/truncated for Slack/i);
   });
 
   it("accepts legacy review values only when signed thread context matches", () => {

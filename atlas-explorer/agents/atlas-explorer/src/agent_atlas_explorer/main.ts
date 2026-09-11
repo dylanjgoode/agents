@@ -10,18 +10,14 @@ import { buildLLM } from "./llm.js";
 import { stripToolEchoMiddleware } from "./modelResponse.js";
 import { SYSTEM_PROMPT } from "./systemMessage.js";
 import { recoverToolErrorsMiddleware } from "./toolErrors.js";
+import { App, MagentaToolPodBackend } from "@magenta/magenta-sdklanggraph-ts";
 
 function log(level: "INFO" | "WARN" | "ERROR", msg: string): void {
   const t = new Date().toISOString().slice(11, 19);
   console.log(`${t} | ${level.padEnd(8)} | ${msg}`);
 }
 
-// The Tool Pod snapshots its read-only skill roots while the Magenta modules
-// load. Establish the source root first so bundled skills remain readable
-// through the audited filesystem tools in local and deployed runtimes.
 process.env.AGENTIC_AGENT_WORKDIR ||= process.cwd();
-const { App, MagentaToolPodBackend } =
-  await import("@magenta/magenta-sdklanggraph-ts");
 
 export const app = new App({ appName: "atlas-explorer" });
 log("INFO", "App created; Atlas MCP tools will be discovered from agent.yaml");
