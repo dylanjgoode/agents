@@ -105,9 +105,10 @@ Rejected unauthorized actor { actorId: 'slack:B0123456789' }
 ```
 
 Add that exact `slack:B...` actor to `CHAT_ALLOWED_USER_IDS` alongside the
-trusted human actors, redeploy, and run the workflow again. Do not use the
-`Wf...` workflow ID shown in Slack's workflow UI; it is not the message author
-ID used by the allowlist.
+trusted human actors, redeploy, and run the workflow again.
+Do not use the
+`Wf...` workflow ID shown in Slack's workflow UI.
+It is not the message author ID used by the allowlist.
 
 Only allow trusted workflows. Anyone who can edit an allowed workflow can
 change the prompt that it runs through the workspace's shared Atlas identity.
