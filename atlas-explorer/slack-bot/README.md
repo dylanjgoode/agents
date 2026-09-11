@@ -110,10 +110,14 @@ Do not use the
 `Wf...` workflow ID shown in Slack's workflow UI.
 It is not the message author ID used by the allowlist.
 
-Only allow trusted workflows. Anyone who can edit an allowed workflow can
-change the prompt that it runs through the workspace's shared Atlas identity.
-This pattern is intended for read-only scheduled reports: a workflow bot cannot
-click the Approve/Reject controls required for persistent mutations.
+Workflow security notes:
+1. Only allow trusted workflows.
+2. Anyone who can edit an allowed workflow can change the prompt 
+   that it runs through the workspace's shared Atlas identity.
+3. The workflow pattern is intended for read-only scheduled reports.
+ 
+   A workflow bot cannot click the Approve/Reject controls required
+   for persistent mutations.
 
 ### Invoke the agent locally too
 
