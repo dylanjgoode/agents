@@ -21,7 +21,7 @@ Args: {
 }`;
 
 describe("buildReviewCard", () => {
-  it("creates a title, tool subtitle, and separate Args JSON block", () => {
+  it("creates a title, tool subtitle, and separate JSON code block", () => {
     const message = buildReviewCard(
       [
         {
@@ -42,8 +42,7 @@ describe("buildReviewCard", () => {
     expect(message.card.title).toBe("Atlas operation requires approval");
     expect(message.card.subtitle).toBe("mongodb__insert_many");
     expect(textContents(message)).toEqual([
-      "Args",
-      `\`\`\`json
+      `\`\`\`
 {
   "database": "inventory",
   "collection": "items",
@@ -96,15 +95,13 @@ describe("buildReviewCard", () => {
     expect(message.card.subtitle).toBe("2 operations");
     expect(textContents(message)).toEqual([
       "mongodb__insert_many",
-      "Args",
-      `\`\`\`json
+      `\`\`\`
 {
   "database": "inventory"
 }
 \`\`\``,
       "mongodb__update_one",
-      "Args",
-      `\`\`\`json
+      `\`\`\`
 {
   "database": "inventory",
   "filter": {

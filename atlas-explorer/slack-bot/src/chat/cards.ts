@@ -73,7 +73,6 @@ function argumentBlocks(actions: AgentActionRequest[]) {
   return actions.flatMap((action, index) => [
     ...(index > 0 ? [Divider()] : []),
     ...(named ? [CardText(action.name, { style: "bold" })] : []),
-    CardText("Args", { style: "bold" }),
     CardText(argumentCodeBlock(action.args)),
   ]);
 }
@@ -84,5 +83,5 @@ function argumentCodeBlock(args: Record<string, unknown>): string {
     argumentsText.length > MAX_ARGUMENT_TEXT
       ? `${argumentsText.slice(0, MAX_ARGUMENT_TEXT - 3)}...`
       : argumentsText;
-  return `\`\`\`json\n${truncatedArguments}\n\`\`\``;
+  return `\`\`\`\n${truncatedArguments}\n\`\`\``;
 }
