@@ -49,18 +49,21 @@ reported lifetime.
 
 ## Configure the Slack app
 
-Create a Slack app from a manifest. Use two apps if you both run locally and
-deploy to Vercel so Socket Mode and the hosted webhook never share tokens.
+Create a Slack app from a manifest. Use separate apps if you both run locally
+and deploy to Vercel so Socket Mode and the hosted webhook never share tokens.
 
 1. In [Slack app management](https://api.slack.com/apps), choose **Create New
    App → From an app manifest** and paste one of these files:
-   - [`manifest.local.json`](./manifest.local.json) for local Socket Mode.
+   - For local Socket Mode: [`manifest.local.json`](./manifest.local.json).
      Slack names the app **AtlasExplorer Local**, enables Socket Mode, and
      omits Event Subscriptions / Interactivity request URLs so this app does
-     not compete with the hosted webhook.
-   - [`manifest.json`](./manifest.json) for the Vercel deployment. Slack names
-     the app **AtlasExplorer** and includes placeholder request URLs you
-     replace after deploy.
+     not compete with the hosted webhook. If multiple developers run locally
+     in the same workspace, each should create their own app, for example
+     `@AtlasExplorer Local {developer-name-foo}` and
+     `@AtlasExplorer Local {developer-name-bar}`.
+   - For the Vercel deployment: [`manifest.json`](./manifest.json). Slack
+     names the app **AtlasExplorer** and includes placeholder request URLs
+     you replace after deploy.
 2. Under **Basic Information → App-Level Tokens**, create a token with
    `connections:write`. This is `SLACK_APP_TOKEN` and is only used for local
    Socket Mode.
@@ -69,9 +72,7 @@ deploy to Vercel so Socket Mode and the hosted webhook never share tokens.
 4. Copy `.env.example` to `.env` and set the Slack and Agentic target values
    for the app you just created. Set `CHAT_ALLOWED_USER_IDS` to
    comma-separated, platform-qualified IDs such as `slack:U0123456789` for
-   trusted operators (copy each member ID from the Slack profile menu). For
-   the local app, you can set `SLACK_BOT_DISPLAY_NAME=AtlasExplorer Local` to
-   match the Slack display name.
+   trusted operators (copy each member ID from the Slack profile menu).
 
 Both manifests request message/history access for DMs, public channels, and
 private channels. Add the corresponding app to each channel where users will
@@ -100,8 +101,8 @@ subscriptions, locks, deduplication, queues, and Agentic workflow records all
 use the same production MongoDB implementations. The embedded database stops
 and its data disappears during graceful shutdown. You can then:
 
-- DM `@AtlasExplorer`; each top-level DM starts a new conversation.
-- Mention `@AtlasExplorer` in a channel; the response starts a thread.
+- DM `@AtlasExplorer Local`; each top-level DM starts a new conversation.
+- Mention `@AtlasExplorer Local` in a channel; the response starts a thread.
 - Send follow-ups in a thread already owned by the bot.
 
 By default, the local bot invokes a deployed Magenta workspace. The Atlas MCP
