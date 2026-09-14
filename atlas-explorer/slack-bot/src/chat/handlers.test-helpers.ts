@@ -130,6 +130,14 @@ export const completed: Extract<
   executionId: "execution-1",
 };
 
+export function callingTool(toolName: string): InvocationProgress {
+  return {
+    content: `Calling tool: ${toolName}...`,
+    phase: "tool_start",
+    toolName,
+  };
+}
+
 export const suspended: Extract<
   InvocationResult,
   { kind: "suspended" }

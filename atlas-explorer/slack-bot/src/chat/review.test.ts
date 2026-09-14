@@ -5,6 +5,7 @@ import { MemoryThreadStore } from "../store/memoryThreadStore.js";
 import type { ThreadStore } from "../store/threadStore.js";
 import {
   completed,
+  callingTool,
   FakeAgentGateway,
   FakeConversation,
   seedPendingReview,
@@ -150,6 +151,31 @@ describe("handleReviewDecision", () => {
       pendingReviewState: "uncertain",
     });
     expect(conversation.reviewStatuses).toEqual(["uncertain"]);
+  });
+
+  it("shows a leading directory listing when resuming an existing session", async () => {
+    await seedPendingReview(store);
+    agent.resumeResult = completed;
+    agent.progressEvents = [
+      callingTool("filesystem_ls"),
+      callingTool("mongodb__insert_many"),
+    ];
+
+    await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: ACTOR_ID,
+        decision: "approve",
+      },
+      { agent, conversation, store },
+    );
+
+    expect(conversation.statuses).toEqual([
+      "Applying approved operation…",
+      "Calling tool: filesystem_ls...",
+      "Calling tool: mongodb__insert_many...",
+    ]);
   });
 
   it("keeps a review pending when authentication fails before dispatch", async () => {
