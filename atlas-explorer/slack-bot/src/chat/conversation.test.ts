@@ -318,6 +318,31 @@ describe("handleConversationMessage", () => {
       "Calling tool: filesystem_ls...",
     ]);
   });
+
+  it("shows a leading directory listing in an existing session", async () => {
+    await store.put({
+      threadId: THREAD_ID,
+      magentaSessionId: "session-1",
+      updatedAt: new Date(),
+    });
+    agent.invokeResult = completed;
+    agent.progressEvents = [callingTool("filesystem_ls")];
+
+    await handleConversationMessage(
+      {
+        threadId: THREAD_ID,
+        eventId: "event-1",
+        actorId: ACTOR_ID,
+        text: "List the workspace files",
+      },
+      { agent, conversation, store },
+    );
+
+    expect(conversation.statuses).toEqual([
+      "Initializing AtlasExplorer…",
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
 });
 
 describe("createProgressHandler", () => {
@@ -335,7 +360,6 @@ describe("createProgressHandler", () => {
       for (const progress of skillLoadBurst(downloadCount)) {
         await handler(progress);
       }
-      await handler.flush?.();
 
       expect(conversation.statuses).toEqual([]);
     },
@@ -375,7 +399,8 @@ describe("createProgressHandler", () => {
     ]);
   });
 
-  it("shows a stream that starts with ls then grep as a directory listing", async () => {
+  it("shows a stream that starts with ls then grep in an existing session", async () => {
+    handler = createProgressHandler(conversation, undefined, true);
     await handler(callingTool("filesystem_ls"));
     await handler(callingTool("filesystem_grep"));
 
@@ -385,7 +410,8 @@ describe("createProgressHandler", () => {
     ]);
   });
 
-  it("shows consecutive directory listings", async () => {
+  it("shows consecutive directory listings in an existing session", async () => {
+    handler = createProgressHandler(conversation, undefined, true);
     await handler(callingTool("filesystem_ls"));
     await handler(callingTool("filesystem_ls"));
 
@@ -432,30 +458,8 @@ describe("createProgressHandler", () => {
     ]);
   });
 
-  it("flushes a trailing buffered ls when the stream leaves progress", async () => {
-    await handler(callingTool("filesystem_ls"));
-    expect(conversation.statuses).toEqual([]);
-
-    await handler.flush?.();
-
-    expect(conversation.statuses).toEqual([
-      "Calling tool: filesystem_ls...",
-    ]);
-  });
-
-  it("does not republish a buffered ls when flush runs twice", async () => {
-    await handler(callingTool("filesystem_ls"));
-    await handler.flush?.();
-    await handler.flush?.();
-
-    expect(conversation.statuses).toEqual([
-      "Calling tool: filesystem_ls...",
-    ]);
-  });
-
   it("ignores empty progress content", async () => {
     await handler({ content: "   ", toolName: "mongodb__atlas_list_projects" });
-    await handler.flush?.();
 
     expect(conversation.statuses).toEqual([]);
   });

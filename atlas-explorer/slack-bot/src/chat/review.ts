@@ -121,6 +121,7 @@ export async function handleReviewDecision(
       createProgressHandler(
         dependencies.conversation,
         dependencies.logger,
+        true,
       ),
     );
   } catch (error) {

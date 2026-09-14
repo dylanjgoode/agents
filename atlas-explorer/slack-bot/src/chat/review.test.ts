@@ -153,12 +153,11 @@ describe("handleReviewDecision", () => {
     expect(conversation.reviewStatuses).toEqual(["uncertain"]);
   });
 
-  it("keeps the resume status through skill-load ls and download", async () => {
+  it("shows a leading directory listing when resuming an existing session", async () => {
     await seedPendingReview(store);
     agent.resumeResult = completed;
     agent.progressEvents = [
       callingTool("filesystem_ls"),
-      callingTool("filesystem_download"),
       callingTool("mongodb__insert_many"),
     ];
 
@@ -174,6 +173,7 @@ describe("handleReviewDecision", () => {
 
     expect(conversation.statuses).toEqual([
       "Applying approved operation…",
+      "Calling tool: filesystem_ls...",
       "Calling tool: mongodb__insert_many...",
     ]);
   });

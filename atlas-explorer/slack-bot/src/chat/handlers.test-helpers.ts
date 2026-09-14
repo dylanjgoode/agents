@@ -50,7 +50,6 @@ export class FakeAgentGateway implements AgentGateway {
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }
-    await onProgress?.flush?.();
     return this.invokeResult;
   }
 
@@ -62,7 +61,6 @@ export class FakeAgentGateway implements AgentGateway {
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }
-    await onProgress?.flush?.();
     if (this.resumeError) {
       throw this.resumeError;
     }

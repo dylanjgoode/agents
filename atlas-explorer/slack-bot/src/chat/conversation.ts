@@ -126,7 +126,11 @@ export async function handleConversationMessage(
           : {}),
         actorId: input.actorId,
       },
-      createProgressHandler(dependencies.conversation, dependencies.logger),
+      createProgressHandler(
+        dependencies.conversation,
+        dependencies.logger,
+        Boolean(activeRecord.magentaSessionId),
+      ),
     );
   } catch (error) {
     dependencies.logger?.error("Atlas Explorer invocation failed", error);
@@ -170,10 +174,8 @@ export async function handleConversationMessage(
 export function createProgressHandler(
   conversation: ConversationSurface,
   logger?: HandlerLogger,
+  showFilesystemLs = false,
 ): InvocationProgressHandler {
-  let seenDownload = false;
-  let bufferedLs: InvocationProgress | undefined;
-
   const publishStatus = async (progress: InvocationProgress): Promise<void> => {
     const status = progress.content.trim();
     if (!status) {
@@ -186,39 +188,16 @@ export function createProgressHandler(
       });
   };
 
-  const flushBufferedLs = async (): Promise<void> => {
-    const pending = bufferedLs;
-    bufferedLs = undefined;
-    if (pending) {
-      await publishStatus(pending);
-    }
-  };
-
-  const handler: InvocationProgressHandler = async (progress) => {
+  return async (progress) => {
     if (isFilesystemDownload(progress)) {
-      seenDownload = true;
-      bufferedLs = undefined;
+      showFilesystemLs = true;
       return;
     }
-    if (isFilesystemLs(progress)) {
-      if (seenDownload) {
-        await publishStatus(progress);
-        return;
-      }
-      if (bufferedLs) {
-        await publishStatus(bufferedLs);
-        bufferedLs = undefined;
-        await publishStatus(progress);
-        return;
-      }
-      bufferedLs = progress;
+    if (isFilesystemLs(progress) && !showFilesystemLs) {
       return;
     }
-    await flushBufferedLs();
     await publishStatus(progress);
   };
-  handler.flush = flushBufferedLs;
-  return handler;
 }
 
 function progressToolName(progress: InvocationProgress): string {
