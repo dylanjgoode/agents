@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryThreadStore } from "../store/memoryThreadStore.js";
 import type { ThreadStore } from "../store/threadStore.js";
 import {
+  createProgressHandler,
   handleConversationMessage,
   recoverPendingDelivery,
 } from "./conversation.js";
 import {
+  callingTool,
   completed,
   FakeAgentGateway,
   FakeConversation,
@@ -266,4 +268,222 @@ describe("handleConversationMessage", () => {
       "pendingDelivery",
     );
   });
+
+  it.each([1, 4, 12])(
+    "keeps the init status through a skill-load burst of %s downloads",
+    async (downloadCount) => {
+      agent.invokeResult = completed;
+      agent.progressEvents = [
+        ...skillLoadBurst(downloadCount),
+        callingTool("mongodb__atlas_list_projects"),
+      ];
+
+      await handleConversationMessage(
+        {
+          threadId: THREAD_ID,
+          eventId: "event-1",
+          actorId: ACTOR_ID,
+          text: "List projects",
+        },
+        { agent, conversation, store },
+      );
+
+      expect(conversation.statuses).toEqual([
+        "Initializing AtlasExplorer…",
+        "Calling tool: mongodb__atlas_list_projects...",
+      ]);
+    },
+  );
+
+  it("shows a directory listing that happens after skill loading in the same turn", async () => {
+    agent.invokeResult = completed;
+    agent.progressEvents = [
+      callingTool("filesystem_ls"),
+      callingTool("filesystem_download"),
+      callingTool("filesystem_ls"),
+    ];
+
+    await handleConversationMessage(
+      {
+        threadId: THREAD_ID,
+        eventId: "event-1",
+        actorId: ACTOR_ID,
+        text: "List projects",
+      },
+      { agent, conversation, store },
+    );
+
+    expect(conversation.statuses).toEqual([
+      "Initializing AtlasExplorer…",
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
 });
+
+describe("createProgressHandler", () => {
+  let conversation: FakeConversation;
+  let handler: ReturnType<typeof createProgressHandler>;
+
+  beforeEach(() => {
+    conversation = new FakeConversation();
+    handler = createProgressHandler(conversation);
+  });
+
+  it.each([1, 4, 12])(
+    "hides an init skill-load burst of %s downloads",
+    async (downloadCount) => {
+      for (const progress of skillLoadBurst(downloadCount)) {
+        await handler(progress);
+      }
+      await handler.flush?.();
+
+      expect(conversation.statuses).toEqual([]);
+    },
+  );
+
+  it("shows Atlas MCP tools after the skill-load burst", async () => {
+    await handler(callingTool("filesystem_ls"));
+    await handler(callingTool("filesystem_download"));
+    await handler(callingTool("mongodb__atlas_list_projects"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: mongodb__atlas_list_projects...",
+    ]);
+  });
+
+  it("shows filesystem ls, grep, and read after skill loading", async () => {
+    await handler(callingTool("filesystem_ls"));
+    await handler(callingTool("filesystem_download"));
+    await handler(callingTool("filesystem_ls"));
+    await handler(callingTool("filesystem_grep"));
+    await handler(callingTool("filesystem_read"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+      "Calling tool: filesystem_grep...",
+      "Calling tool: filesystem_read...",
+    ]);
+  });
+
+  it("shows a stream that starts with ls then grep as a directory listing", async () => {
+    await handler(callingTool("filesystem_ls"));
+    await handler(callingTool("filesystem_grep"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+      "Calling tool: filesystem_grep...",
+    ]);
+  });
+
+  it("shows consecutive directory listings", async () => {
+    await handler(callingTool("filesystem_ls"));
+    await handler(callingTool("filesystem_ls"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
+
+  it("forwards a stream that starts with grep immediately", async () => {
+    await handler(callingTool("filesystem_grep"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_grep...",
+    ]);
+  });
+
+  it("never shows filesystem_download even without a preceding ls", async () => {
+    await handler(callingTool("filesystem_download"));
+    await handler(callingTool("mongodb__atlas_list_projects"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: mongodb__atlas_list_projects...",
+    ]);
+  });
+
+  it("keeps hiding filesystem_download after a user-facing tool", async () => {
+    await handler(callingTool("mongodb__atlas_list_projects"));
+    await handler(callingTool("filesystem_download"));
+    await handler(callingTool("filesystem_grep"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: mongodb__atlas_list_projects...",
+      "Calling tool: filesystem_grep...",
+    ]);
+  });
+
+  it("flushes a trailing buffered ls when the stream leaves progress", async () => {
+    await handler(callingTool("filesystem_ls"));
+    expect(conversation.statuses).toEqual([]);
+
+    await handler.flush?.();
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
+
+  it("does not republish a buffered ls when flush runs twice", async () => {
+    await handler(callingTool("filesystem_ls"));
+    await handler.flush?.();
+    await handler.flush?.();
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
+
+  it("hides skill-load download when only the Calling tool content is present", async () => {
+    await handler({
+      content: "Calling tool: filesystem_ls...",
+    });
+    await handler({
+      content: "Calling tool: filesystem_download...",
+    });
+    await handler.flush?.();
+
+    expect(conversation.statuses).toEqual([]);
+  });
+
+  it("ignores empty progress content", async () => {
+    await handler({ content: "   ", toolName: "mongodb__atlas_list_projects" });
+    await handler.flush?.();
+
+    expect(conversation.statuses).toEqual([]);
+  });
+
+  it("caps forwarded status text at 100 characters", async () => {
+    const content = `Calling tool: ${"a".repeat(200)}`;
+    await handler({
+      content,
+      toolName: "mongodb__atlas_list_projects",
+    });
+
+    expect(conversation.statuses).toEqual([content.slice(0, 100)]);
+  });
+
+  it("logs when Slack status updates fail", async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    conversation.setStatus = async () => {
+      throw new Error("status failed");
+    };
+    handler = createProgressHandler(conversation, logger);
+
+    await handler(callingTool("mongodb__atlas_list_projects"));
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Could not update conversation progress status",
+      expect.any(Error),
+    );
+  });
+});
+
+function skillLoadBurst(downloadCount: number) {
+  return [
+    callingTool("filesystem_ls"),
+    ...Array.from({ length: downloadCount }, () =>
+      callingTool("filesystem_download"),
+    ),
+  ];
+}

@@ -374,8 +374,10 @@ export class MagentaClient {
           status: chunk.metadata.status,
         });
       } else if (chunk.chunk_type === "text") {
+        await onProgress?.flush?.();
         streamedContent += chunk.content;
       } else if (chunk.chunk_type === "done") {
+        await onProgress?.flush?.();
         if (chunk.metadata.status === "suspended") {
           const rawContext = chunk.metadata.suspend_context;
           try {

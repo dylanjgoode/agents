@@ -115,9 +115,10 @@ export interface InvocationProgress {
   status?: string;
 }
 
-export type InvocationProgressHandler = (
-  progress: InvocationProgress,
-) => void | Promise<void>;
+export interface InvocationProgressHandler {
+  (progress: InvocationProgress): void | Promise<void>;
+  flush?: () => void | Promise<void>;
+}
 
 export interface InvokeInput {
   message: string;

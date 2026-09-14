@@ -4,6 +4,8 @@ import {
   AgenticApiError,
   MagentaClient,
 } from "./client.js";
+import { createProgressHandler } from "../chat/conversation.js";
+import { FakeConversation } from "../chat/handlers.test-helpers.js";
 
 const config = {
   baseUrl: "https://agentic.example.test/",
@@ -50,6 +52,18 @@ function streamResponse(
       headers,
     },
   );
+}
+
+function streamToolProgress(toolName: string) {
+  return {
+    chunk_type: "progress",
+    content: `Calling tool: ${toolName}...`,
+    metadata: {
+      phase: "tool_start",
+      tool_name: toolName,
+    },
+    execution_id: "stream-execution",
+  };
 }
 
 function unreadableResponse(status: number): Response {
@@ -441,13 +455,23 @@ describe("MagentaClient", () => {
       { fetchFn },
     );
     const progress: unknown[] = [];
+    const events: string[] = [];
+    const onProgress = Object.assign(
+      (event: { toolName?: string }) => {
+        progress.push(event);
+        events.push(`progress:${event.toolName}`);
+      },
+      {
+        flush: () => {
+          events.push("flush");
+        },
+      },
+    );
 
     await expect(
       client.invokeStream(
         { message: "List projects", actorId: "slack:U123" },
-        (event) => {
-          progress.push(event);
-        },
+        onProgress,
       ),
     ).resolves.toEqual({
       kind: "completed",
@@ -470,7 +494,88 @@ describe("MagentaClient", () => {
         status: undefined,
       },
     ]);
+    expect(events).toEqual([
+      "progress:mongodb__atlas_list_projects",
+      "flush",
+      "flush",
+    ]);
   });
+
+  it("flushes progress on done when the stream has no text chunks", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      streamResponse([
+        {
+          chunk_type: "progress",
+          content: "Calling tool: filesystem_ls...",
+          metadata: {
+            phase: "tool_start",
+            tool_name: "filesystem_ls",
+          },
+          execution_id: "stream-execution",
+        },
+        {
+          chunk_type: "done",
+          content: "Listed the skills directory.",
+          metadata: { status: "completed" },
+          execution_id: "stream-execution",
+        },
+      ]),
+    );
+    const client = new MagentaClient(
+      {
+        baseUrl: "http://localhost:3000",
+        invokeTarget: "local",
+      },
+      { fetchFn },
+    );
+    const flush = vi.fn();
+
+    await expect(
+      client.invokeStream(
+        { message: "List files", actorId: "slack:U123" },
+        Object.assign(() => undefined, { flush }),
+      ),
+    ).resolves.toMatchObject({ kind: "completed" });
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([1, 4, 12])(
+    "hides Magenta skill-load tools for %s downloads and flushes a later directory listing",
+    async (downloadCount) => {
+      const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+        streamResponse([
+          streamToolProgress("filesystem_ls"),
+          ...Array.from({ length: downloadCount }, () =>
+            streamToolProgress("filesystem_download"),
+          ),
+          streamToolProgress("filesystem_ls"),
+          {
+            chunk_type: "done",
+            content: "Listed the workspace files.",
+            metadata: { status: "completed" },
+            execution_id: "stream-execution",
+          },
+        ]),
+      );
+      const conversation = new FakeConversation();
+      const client = new MagentaClient(
+        {
+          baseUrl: "http://localhost:3000",
+          invokeTarget: "local",
+        },
+        { fetchFn },
+      );
+
+      await client.invokeStream(
+        { message: "List files", actorId: "slack:U123" },
+        createProgressHandler(conversation),
+      );
+
+      expect(conversation.statuses).toEqual([
+        "Calling tool: filesystem_ls...",
+      ]);
+    },
+  );
 
   it("uses the deployed gateway invokeStream route", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(

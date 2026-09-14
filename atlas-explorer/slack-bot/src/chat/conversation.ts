@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  InvocationProgress,
   InvocationProgressHandler,
   InvocationResult,
 } from "../magenta/types.js";
@@ -115,7 +116,7 @@ export async function handleConversationMessage(
   }
 
   await dependencies.conversation
-    .setStatus("Exploring Atlas…")
+    .setStatus("Initializing AtlasExplorer…")
     .catch((error: unknown) => {
       dependencies.logger?.warn?.(
         "Could not set conversation status",
@@ -184,7 +185,11 @@ export function createProgressHandler(
   conversation: ConversationSurface,
   logger?: HandlerLogger,
 ): InvocationProgressHandler {
-  return async (progress) => {
+  let bufferedLs: InvocationProgress | undefined;
+
+  const publishStatus = async (
+    progress: InvocationProgress,
+  ): Promise<void> => {
     const status = progress.content.trim();
     if (!status) {
       return;
@@ -198,6 +203,54 @@ export function createProgressHandler(
         );
       });
   };
+
+  const flushBufferedLs = async (): Promise<void> => {
+    const pending = bufferedLs;
+    bufferedLs = undefined;
+    if (pending) {
+      await publishStatus(pending);
+    }
+  };
+
+  const handler: InvocationProgressHandler = async (progress) => {
+    if (isFilesystemDownload(progress)) {
+      bufferedLs = undefined;
+      return;
+    }
+    if (isFilesystemLs(progress)) {
+      if (bufferedLs) {
+        await publishStatus(bufferedLs);
+        bufferedLs = undefined;
+        await publishStatus(progress);
+        return;
+      }
+      bufferedLs = progress;
+      return;
+    }
+    await flushBufferedLs();
+    await publishStatus(progress);
+  };
+  handler.flush = flushBufferedLs;
+  return handler;
+}
+
+function progressToolName(progress: InvocationProgress): string {
+  const named = progress.toolName?.trim();
+  if (named) {
+    return named;
+  }
+  const match = /^Calling tool:\s*([A-Za-z0-9_]+)/i.exec(
+    progress.content.trim(),
+  );
+  return match?.[1] ?? "";
+}
+
+function isFilesystemDownload(progress: InvocationProgress): boolean {
+  return progressToolName(progress) === "filesystem_download";
+}
+
+function isFilesystemLs(progress: InvocationProgress): boolean {
+  return progressToolName(progress) === "filesystem_ls";
 }
 
 export async function publishInvocationResult(

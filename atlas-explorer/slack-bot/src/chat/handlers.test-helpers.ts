@@ -50,6 +50,7 @@ export class FakeAgentGateway implements AgentGateway {
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }
+    await onProgress?.flush?.();
     return this.invokeResult;
   }
 
@@ -61,6 +62,7 @@ export class FakeAgentGateway implements AgentGateway {
     for (const progress of this.progressEvents) {
       await onProgress?.(progress);
     }
+    await onProgress?.flush?.();
     if (this.resumeError) {
       throw this.resumeError;
     }
@@ -129,6 +131,14 @@ export const completed: Extract<
   sessionId: "session-1",
   executionId: "execution-1",
 };
+
+export function callingTool(toolName: string): InvocationProgress {
+  return {
+    content: `Calling tool: ${toolName}...`,
+    phase: "tool_start",
+    toolName,
+  };
+}
 
 export const suspended: Extract<
   InvocationResult,
