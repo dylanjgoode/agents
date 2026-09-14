@@ -351,7 +351,17 @@ describe("createProgressHandler", () => {
 
   beforeEach(() => {
     conversation = new FakeConversation();
-    handler = createProgressHandler(conversation);
+    handler = createProgressHandler(conversation, undefined, false);
+  });
+
+  it("shows filesystem_ls by default", async () => {
+    const defaultHandler = createProgressHandler(conversation);
+
+    await defaultHandler(callingTool("filesystem_ls"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+    ]);
   });
 
   it.each([1, 4, 12])(

@@ -174,7 +174,7 @@ export async function handleConversationMessage(
 export function createProgressHandler(
   conversation: ConversationSurface,
   logger?: HandlerLogger,
-  showFilesystemLs = false,
+  showFilesystemLs = true,
 ): InvocationProgressHandler {
   const publishStatus = async (progress: InvocationProgress): Promise<void> => {
     const status = progress.content.trim();
