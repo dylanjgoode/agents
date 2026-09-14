@@ -351,6 +351,16 @@ describe("createProgressHandler", () => {
     ]);
   });
 
+  it("shows filesystem_ls immediately after a skill-load download", async () => {
+    await handler(callingTool("filesystem_ls"));
+    await handler(callingTool("filesystem_download"));
+    await handler(callingTool("filesystem_ls"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
+
   it("shows filesystem ls, grep, and read after skill loading", async () => {
     await handler(callingTool("filesystem_ls"));
     await handler(callingTool("filesystem_download"));
@@ -402,6 +412,15 @@ describe("createProgressHandler", () => {
     ]);
   });
 
+  it("shows filesystem_ls after a download even when no init ls preceded it", async () => {
+    await handler(callingTool("filesystem_download"));
+    await handler(callingTool("filesystem_ls"));
+
+    expect(conversation.statuses).toEqual([
+      "Calling tool: filesystem_ls...",
+    ]);
+  });
+
   it("keeps hiding filesystem_download after a user-facing tool", async () => {
     await handler(callingTool("mongodb__atlas_list_projects"));
     await handler(callingTool("filesystem_download"));
@@ -432,18 +451,6 @@ describe("createProgressHandler", () => {
     expect(conversation.statuses).toEqual([
       "Calling tool: filesystem_ls...",
     ]);
-  });
-
-  it("hides skill-load download when only the Calling tool content is present", async () => {
-    await handler({
-      content: "Calling tool: filesystem_ls...",
-    });
-    await handler({
-      content: "Calling tool: filesystem_download...",
-    });
-    await handler.flush?.();
-
-    expect(conversation.statuses).toEqual([]);
   });
 
   it("ignores empty progress content", async () => {

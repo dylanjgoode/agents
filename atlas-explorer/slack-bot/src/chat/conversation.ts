@@ -5,10 +5,7 @@ import type {
   InvocationProgressHandler,
   InvocationResult,
 } from "../magenta/types.js";
-import type {
-  ThreadRecord,
-  ThreadStore,
-} from "../store/threadStore.js";
+import type { ThreadRecord, ThreadStore } from "../store/threadStore.js";
 import { buildReviewCard } from "./cards.js";
 import type {
   ChatHandlerDependencies,
@@ -44,10 +41,9 @@ export async function handleConversationMessage(
     dependencies.authorizedActorIds &&
     !dependencies.authorizedActorIds.has(input.actorId)
   ) {
-    dependencies.logger?.warn?.(
-      "Rejected unauthorized actor",
-      { actorId: input.actorId },
-    );
+    dependencies.logger?.warn?.("Rejected unauthorized actor", {
+      actorId: input.actorId,
+    });
     await dependencies.conversation.post(
       "You are not authorized to use this Atlas Explorer bot.",
     );
@@ -110,18 +106,14 @@ export async function handleConversationMessage(
       );
       return;
     }
-    const { pendingDelivery: _delivery, ...withoutDelivery } =
-      activeRecord;
+    const { pendingDelivery: _delivery, ...withoutDelivery } = activeRecord;
     activeRecord = withoutDelivery;
   }
 
   await dependencies.conversation
     .setStatus("Initializing AtlasExplorer…")
     .catch((error: unknown) => {
-      dependencies.logger?.warn?.(
-        "Could not set conversation status",
-        error,
-      );
+      dependencies.logger?.warn?.("Could not set conversation status", error);
     });
 
   let result: InvocationResult;
@@ -134,16 +126,10 @@ export async function handleConversationMessage(
           : {}),
         actorId: input.actorId,
       },
-      createProgressHandler(
-        dependencies.conversation,
-        dependencies.logger,
-      ),
+      createProgressHandler(dependencies.conversation, dependencies.logger),
     );
   } catch (error) {
-    dependencies.logger?.error(
-      "Atlas Explorer invocation failed",
-      error,
-    );
+    dependencies.logger?.error("Atlas Explorer invocation failed", error);
     const released = await releaseTurn(
       eventId,
       activeRecord,
@@ -185,11 +171,10 @@ export function createProgressHandler(
   conversation: ConversationSurface,
   logger?: HandlerLogger,
 ): InvocationProgressHandler {
+  let seenDownload = false;
   let bufferedLs: InvocationProgress | undefined;
 
-  const publishStatus = async (
-    progress: InvocationProgress,
-  ): Promise<void> => {
+  const publishStatus = async (progress: InvocationProgress): Promise<void> => {
     const status = progress.content.trim();
     if (!status) {
       return;
@@ -197,10 +182,7 @@ export function createProgressHandler(
     await conversation
       .setStatus(status.slice(0, 100))
       .catch((error: unknown) => {
-        logger?.warn?.(
-          "Could not update conversation progress status",
-          error,
-        );
+        logger?.warn?.("Could not update conversation progress status", error);
       });
   };
 
@@ -214,10 +196,15 @@ export function createProgressHandler(
 
   const handler: InvocationProgressHandler = async (progress) => {
     if (isFilesystemDownload(progress)) {
+      seenDownload = true;
       bufferedLs = undefined;
       return;
     }
     if (isFilesystemLs(progress)) {
+      if (seenDownload) {
+        await publishStatus(progress);
+        return;
+      }
       if (bufferedLs) {
         await publishStatus(bufferedLs);
         bufferedLs = undefined;
@@ -235,14 +222,7 @@ export function createProgressHandler(
 }
 
 function progressToolName(progress: InvocationProgress): string {
-  const named = progress.toolName?.trim();
-  if (named) {
-    return named;
-  }
-  const match = /^Calling tool:\s*([A-Za-z0-9_]+)/i.exec(
-    progress.content.trim(),
-  );
-  return match?.[1] ?? "";
+  return progress.toolName?.trim() ?? "";
 }
 
 function isFilesystemDownload(progress: InvocationProgress): boolean {
@@ -267,9 +247,7 @@ export async function publishInvocationResult(
 
   if (result.kind === "completed") {
     const deliveryId =
-      claim.kind === "turn"
-        ? claim.eventId
-        : `review:${claim.interruptId}`;
+      claim.kind === "turn" ? claim.eventId : `review:${claim.interruptId}`;
     const record: ThreadRecord = {
       threadId: input.threadId,
       magentaSessionId: result.sessionId,
@@ -324,11 +302,7 @@ export async function publishInvocationResult(
       : {}),
     updatedAt,
   };
-  const stored = await replaceClaimedRecord(
-    record,
-    claim,
-    dependencies.store,
-  );
+  const stored = await replaceClaimedRecord(record, claim, dependencies.store);
   if (!stored) {
     dependencies.logger?.warn?.(
       "Discarded a suspension from a stale conversation claim",
@@ -367,14 +341,11 @@ async function handlePendingReview(
   if (record.pendingReviewState === "resuming") {
     const reviewClaimExpired =
       !record.pendingReviewClaimedAt ||
-      claimedAt.getTime() -
-        record.pendingReviewClaimedAt.getTime() >=
+      claimedAt.getTime() - record.pendingReviewClaimedAt.getTime() >=
         REVIEW_CLAIM_MAX_MS;
     if (reviewClaimExpired && record.pendingInterruptId) {
-      const {
-        pendingReviewClaimedAt: _reviewClaimedAt,
-        ...uncertainRecord
-      } = record;
+      const { pendingReviewClaimedAt: _reviewClaimedAt, ...uncertainRecord } =
+        record;
       const stored = await dependencies.store.replaceClaimedReview(
         record.pendingInterruptId,
         {
@@ -395,15 +366,9 @@ async function handlePendingReview(
     );
     return;
   }
-  if (
-    record.pendingActionRequests?.length &&
-    record.pendingInterruptId
-  ) {
+  if (record.pendingActionRequests?.length && record.pendingInterruptId) {
     await dependencies.conversation.post(
-      buildReviewCard(
-        record.pendingActionRequests,
-        record.pendingInterruptId,
-      ),
+      buildReviewCard(record.pendingActionRequests, record.pendingInterruptId),
     );
     return;
   }
@@ -462,8 +427,9 @@ async function deliverPendingRecord(
 
   try {
     if ((claimed.attemptCount ?? 1) > 1) {
-      const status =
-        await dependencies.conversation.getDeliveryStatus(delivery.id);
+      const status = await dependencies.conversation.getDeliveryStatus(
+        delivery.id,
+      );
       if (status === "delivered") {
         await dependencies.store.clearPendingDelivery(
           record.threadId,
@@ -481,10 +447,7 @@ async function deliverPendingRecord(
       }
     }
 
-    await dependencies.conversation.deliver(
-      delivery.text,
-      delivery.id,
-    );
+    await dependencies.conversation.deliver(delivery.text, delivery.id);
     await dependencies.store.clearPendingDelivery(
       record.threadId,
       delivery.id,
@@ -492,10 +455,7 @@ async function deliverPendingRecord(
     );
     return "delivered";
   } catch (error) {
-    dependencies.logger?.error(
-      "Could not deliver a stored response",
-      error,
-    );
+    dependencies.logger?.error("Could not deliver a stored response", error);
     return "failed";
   }
 }
