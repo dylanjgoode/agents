@@ -1,0 +1,71 @@
+{
+  "display_information": {
+    "name": "AtlasExplorer Local",
+    "description": "Local Socket Mode client for the Magenta Atlas Explorer agent. Not production.",
+    "background_color": "#001E2B"
+  },
+  "features": {
+    "agent_view": {
+      "agent_description": "Local Atlas Explorer for development. Explore MongoDB databases and Atlas resources.",
+      "suggested_prompts": [
+        {
+          "title": "List Atlas projects",
+          "message": "List the Atlas projects I can access."
+        },
+        {
+          "title": "Inspect a database",
+          "message": "Help me inspect the databases and collections on my Atlas clusters."
+        },
+        {
+          "title": "Explain a query",
+          "message": "Help me understand and optimize a MongoDB query plan."
+        }
+      ]
+    },
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "bot_user": {
+      "display_name": "AtlasExplorer Local",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "assistant:write",
+        "channels:history",
+        "chat:write",
+        "groups:history",
+        "im:history",
+        "im:read",
+        "im:write",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_home_opened",
+        "app_context_changed",
+        "app_mention",
+        "agent_session_stopped",
+        "agent_session_title_changed",
+        "message.channels",
+        "message.groups",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "is_hosted": false,
+    "token_rotation_enabled": false
+  }
+}
