@@ -127,6 +127,9 @@ bot's logs for:
 Rejected unauthorized actor { actorId: 'slack:B0123456789' }
 ```
 
+Unauthorized bot messages are logged but do not receive a Slack denial reply,
+which prevents bot-authored denial messages from triggering one another.
+
 Add that exact `slack:B...` actor to `CHAT_ALLOWED_USER_IDS` alongside the
 trusted human actors, redeploy, and run the workflow again.
 Do not use the

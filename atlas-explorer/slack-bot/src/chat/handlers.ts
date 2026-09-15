@@ -139,6 +139,7 @@ async function dispatchMessage(
       threadId: thread.id,
       eventId: `${thread.adapter.name}:${message.id}`,
       actorId: actorIdFor(thread, message),
+      authorIsBot: message.author.isBot === true,
       text: message.text,
     },
     {

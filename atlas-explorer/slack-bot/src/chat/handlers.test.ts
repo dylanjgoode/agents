@@ -150,6 +150,47 @@ describe("registerChatHandlers", () => {
     expect(agent.invokeInputs).toEqual([]);
   });
 
+  it("does not reply to an unauthorized bot mention", async () => {
+    const restrictedBot = new Chat({
+      adapters: { slack: adapter },
+      concurrency: "concurrent",
+      logger: "silent",
+      state,
+      userName: "AtlasExplorer",
+    });
+    registerChatHandlers(restrictedBot, {
+      agent,
+      authorizedActorIds: new Set(["slack:U999"]),
+      store,
+    });
+    await restrictedBot.initialize();
+
+    await restrictedBot.processMessage(
+      adapter,
+      CHANNEL_THREAD_ID,
+      testMessage(
+        "message-bot-restricted",
+        CHANNEL_THREAD_ID,
+        "Automated follow-up",
+        {
+          author: {
+            ...author(),
+            userId: "B999",
+            isBot: true,
+          },
+          isMention: true,
+          raw: {
+            type: "app_mention",
+            text: "<@B123> Automated follow-up",
+          },
+        },
+      ),
+    );
+
+    expect(agent.invokeInputs).toEqual([]);
+    expect(adapter.postMessage).not.toHaveBeenCalled();
+  });
+
   it.each([
     [REVIEW_APPROVE_ACTION_ID, "approve"],
     [REVIEW_REJECT_ACTION_ID, "reject"],
@@ -269,6 +310,7 @@ function testMessage(
   threadId: string,
   text: string,
   overrides: {
+    author?: Author;
     isMention?: boolean;
     raw?: unknown;
   } = {},

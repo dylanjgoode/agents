@@ -17,6 +17,7 @@ const REVIEW_CLAIM_MAX_MS = 10 * 60 * 1_000;
 
 export interface ConversationMessageInput {
   actorId: string;
+  authorIsBot?: boolean;
   eventId?: string;
   text: string;
   threadId: string;
@@ -44,6 +45,9 @@ export async function handleConversationMessage(
     dependencies.logger?.warn?.("Rejected unauthorized actor", {
       actorId: input.actorId,
     });
+    if (input.authorIsBot === true) {
+      return;
+    }
     await dependencies.conversation.post(
       "You are not authorized to use this Atlas Explorer bot.",
     );
