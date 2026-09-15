@@ -12,6 +12,7 @@ import {
   completed,
   FakeAgentGateway,
   FakeConversation,
+  seedPendingReview,
   suspended,
 } from "./handlers.test-helpers.js";
 
@@ -98,6 +99,32 @@ describe("handleConversationMessage", () => {
     });
   });
 
+  it("lets an allowlisted actor invoke", async () => {
+    agent.invokeResult = completed;
+
+    await handleConversationMessage(
+      {
+        threadId: THREAD_ID,
+        eventId: "event-1",
+        actorId: ACTOR_ID,
+        text: "List projects",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID, "slack:U999"]),
+      },
+    );
+
+    expect(agent.invokeInputs).toEqual([
+      {
+        message: "List projects",
+        actorId: ACTOR_ID,
+      },
+    ]);
+  });
+
   it("silently rejects an unauthorized bot", async () => {
     agent.invokeResult = completed;
     const logger = { error: vi.fn(), warn: vi.fn() };
@@ -153,6 +180,31 @@ describe("handleConversationMessage", () => {
         actorId: "slack:B123",
         message: "Run scheduled report",
       },
+    ]);
+  });
+
+  it("does not expose a pending review to a non-allowlisted actor", async () => {
+    await seedPendingReview(store);
+
+    await handleConversationMessage(
+      {
+        threadId: THREAD_ID,
+        eventId: "event-unauthorized",
+        actorId: "slack:U999",
+        text: "Approve it",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID]),
+      },
+    );
+
+    expect(agent.invokeInputs).toEqual([]);
+    expect(agent.resumeInputs).toEqual([]);
+    expect(conversation.messages).toEqual([
+      expect.stringMatching(/not authorized/i),
     ]);
   });
 

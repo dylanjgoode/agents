@@ -148,6 +148,84 @@ describe("registerChatHandlers", () => {
 
     expect(await state.isSubscribed(CHANNEL_THREAD_ID)).toBe(false);
     expect(agent.invokeInputs).toEqual([]);
+    expect(adapter.postMessage).toHaveBeenCalledWith(
+      CHANNEL_THREAD_ID,
+      expect.stringMatching(/not authorized/i),
+    );
+  });
+
+  it("subscribes and invokes an allowlisted mention", async () => {
+    const restrictedBot = await botWithAllowlist(new Set(["slack:U123"]));
+
+    await restrictedBot.processMessage(
+      adapter,
+      CHANNEL_THREAD_ID,
+      testMessage(
+        "message-allowed",
+        CHANNEL_THREAD_ID,
+        "List projects",
+        { isMention: true },
+      ),
+    );
+
+    expect(await state.isSubscribed(CHANNEL_THREAD_ID)).toBe(true);
+    expect(agent.invokeInputs).toEqual([
+      {
+        actorId: "slack:U123",
+        message: "List projects",
+      },
+    ]);
+  });
+
+  it("denies an unauthorized direct message", async () => {
+    const restrictedBot = await botWithAllowlist(new Set(["slack:U123"]));
+
+    await restrictedBot.processMessage(
+      adapter,
+      DM_THREAD_ID,
+      testMessage("dm-restricted", DM_THREAD_ID, "List projects", {
+        author: { ...author(), userId: "U999" },
+      }),
+    );
+
+    expect(agent.invokeInputs).toEqual([]);
+    expect(adapter.postMessage).toHaveBeenCalledWith(
+      DM_THREAD_ID,
+      expect.stringMatching(/not authorized/i),
+    );
+  });
+
+  it("denies an unauthorized follow-up in a subscribed thread", async () => {
+    const restrictedBot = await botWithAllowlist(new Set(["slack:U123"]));
+    await restrictedBot.processMessage(
+      adapter,
+      CHANNEL_THREAD_ID,
+      testMessage(
+        "message-allowed",
+        CHANNEL_THREAD_ID,
+        "List projects",
+        { isMention: true },
+      ),
+    );
+    agent.invokeInputs = [];
+
+    await restrictedBot.processMessage(
+      adapter,
+      CHANNEL_THREAD_ID,
+      testMessage(
+        "message-follow-up",
+        CHANNEL_THREAD_ID,
+        "Now drop the database",
+        { author: { ...author(), userId: "U999" } },
+      ),
+    );
+
+    expect(await state.isSubscribed(CHANNEL_THREAD_ID)).toBe(true);
+    expect(agent.invokeInputs).toEqual([]);
+    expect(adapter.postMessage).toHaveBeenCalledWith(
+      CHANNEL_THREAD_ID,
+      expect.stringMatching(/not authorized/i),
+    );
   });
 
   it("does not reply to an unauthorized bot mention", async () => {
@@ -227,6 +305,141 @@ describe("registerChatHandlers", () => {
     },
   );
 
+  it.each([REVIEW_APPROVE_ACTION_ID, REVIEW_REJECT_ACTION_ID] as const)(
+    "denies a non-allowlisted actor's %s action",
+    async (actionId) => {
+      const restrictedBot = new Chat({
+        adapters: { slack: adapter },
+        concurrency: "concurrent",
+        logger: "silent",
+        state,
+        userName: "AtlasExplorer",
+      });
+      registerChatHandlers(restrictedBot, {
+        agent,
+        authorizedActorIds: new Set(["slack:U123"]),
+        store,
+      });
+      await restrictedBot.initialize();
+      await seedPendingReview(store);
+
+      await restrictedBot.processAction(
+        {
+          actionId,
+          adapter,
+          messageId: "review-message",
+          raw: {},
+          threadId: CHANNEL_THREAD_ID,
+          user: { ...author(), userId: "U999" },
+          value: "interrupt-1",
+        },
+        undefined,
+      );
+
+      expect(agent.resumeInputs).toEqual([]);
+      expect(adapter.postMessage).toHaveBeenCalledWith(
+        CHANNEL_THREAD_ID,
+        expect.stringMatching(/not authorized/i),
+      );
+      expect(await store.get(CHANNEL_THREAD_ID)).toMatchObject({
+        pendingInterruptId: "interrupt-1",
+      });
+    },
+  );
+
+  it("denies an allowlisted actor who did not request the review", async () => {
+    const restrictedBot = await botWithAllowlist(
+      new Set(["slack:U123", "slack:U999"]),
+    );
+    await seedPendingReview(store);
+
+    await restrictedBot.processAction(
+      {
+        actionId: REVIEW_APPROVE_ACTION_ID,
+        adapter,
+        messageId: "review-message",
+        raw: {},
+        threadId: CHANNEL_THREAD_ID,
+        user: { ...author(), userId: "U999" },
+        value: "interrupt-1",
+      },
+      undefined,
+    );
+
+    expect(agent.resumeInputs).toEqual([]);
+    expect(adapter.postMessage).toHaveBeenCalledWith(
+      CHANNEL_THREAD_ID,
+      expect.stringMatching(/only the requester/i),
+    );
+    expect(await store.get(CHANNEL_THREAD_ID)).toMatchObject({
+      pendingInterruptId: "interrupt-1",
+    });
+  });
+
+  it("ignores a forged actor in the action value and uses signed user context", async () => {
+    const restrictedBot = await botWithAllowlist(new Set(["slack:U123"]));
+    await seedPendingReview(store);
+
+    await restrictedBot.processAction(
+      {
+        actionId: REVIEW_APPROVE_ACTION_ID,
+        adapter,
+        messageId: "review-message",
+        raw: {},
+        threadId: CHANNEL_THREAD_ID,
+        user: { ...author(), userId: "U999" },
+        value: "slack:U123",
+      },
+      undefined,
+    );
+
+    expect(agent.resumeInputs).toEqual([]);
+    expect(adapter.postMessage).toHaveBeenCalledWith(
+      CHANNEL_THREAD_ID,
+      expect.stringMatching(/not authorized/i),
+    );
+  });
+
+  it("rejects an adapter that cannot resolve the interrupt id", async () => {
+    const restrictedBot = new Chat({
+      adapters: { slack: adapter },
+      concurrency: "concurrent",
+      logger: "silent",
+      state,
+      userName: "AtlasExplorer",
+    });
+    registerChatHandlers(restrictedBot, {
+      agent,
+      authorizedActorIds: new Set(["slack:U123"]),
+      reviewInterruptIdForAdapter: () => null,
+      store,
+    });
+    await restrictedBot.initialize();
+    await seedPendingReview(store);
+
+    await restrictedBot.processAction(
+      {
+        actionId: REVIEW_APPROVE_ACTION_ID,
+        adapter,
+        messageId: "review-message",
+        raw: {},
+        threadId: CHANNEL_THREAD_ID,
+        user: author(),
+        value: JSON.stringify({
+          channelId: "C999",
+          interruptId: "interrupt-1",
+        }),
+      },
+      undefined,
+    );
+
+    expect(agent.resumeInputs).toEqual([]);
+    expect(adapter.postMessage).toHaveBeenCalledWith(
+      CHANNEL_THREAD_ID,
+      expect.stringMatching(/invalid or expired/i),
+    );
+  });
+
   it("rejects empty action values without resuming", async () => {
     await bot.processAction(
       {
@@ -303,6 +516,25 @@ describe("registerChatHandlers", () => {
 
     expect(agent.invokeInputs).toHaveLength(1);
   });
+
+  async function botWithAllowlist(
+    authorizedActorIds: ReadonlySet<string>,
+  ) {
+    const restrictedBot = new Chat({
+      adapters: { slack: adapter },
+      concurrency: "concurrent",
+      logger: "silent",
+      state,
+      userName: "AtlasExplorer",
+    });
+    registerChatHandlers(restrictedBot, {
+      agent,
+      authorizedActorIds,
+      store,
+    });
+    await restrictedBot.initialize();
+    return restrictedBot;
+  }
 });
 
 function testMessage(

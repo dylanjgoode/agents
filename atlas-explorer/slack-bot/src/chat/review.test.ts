@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgenticApiError } from "../magenta/client.js";
 import { MemoryThreadStore } from "../store/memoryThreadStore.js";
@@ -87,7 +87,63 @@ describe("handleReviewDecision", () => {
     expect(outcomes).toContain("missing");
   });
 
-  it("restricts decisions to the original platform-qualified actor", async () => {
+  it.each(["approve", "reject"] as const)(
+    "restricts %s decisions to the original platform-qualified actor",
+    async (decision) => {
+      await seedPendingReview(store);
+
+      const outcome = await handleReviewDecision(
+        {
+          threadId: THREAD_ID,
+          interruptId: "interrupt-1",
+          actorId: "slack:U999",
+          decision,
+        },
+        { agent, conversation, store },
+      );
+
+      expect(outcome).toBe("unauthorized");
+      expect(agent.resumeInputs).toEqual([]);
+      expect(conversation.messages[0]).toMatch(/only the requester/i);
+    },
+  );
+
+  it.each(["approve", "reject"] as const)(
+    "denies a non-allowlisted actor who tries to %s a pending review",
+    async (decision) => {
+      await seedPendingReview(store);
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const outcome = await handleReviewDecision(
+        {
+          threadId: THREAD_ID,
+          interruptId: "interrupt-1",
+          actorId: "slack:U999",
+          decision,
+        },
+        {
+          agent,
+          conversation,
+          logger,
+          store,
+          authorizedActorIds: new Set([ACTOR_ID]),
+        },
+      );
+
+      expect(outcome).toBe("unauthorized");
+      expect(agent.resumeInputs).toEqual([]);
+      expect(conversation.messages[0]).toMatch(/not authorized/i);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Rejected unauthorized actor",
+        { actorId: "slack:U999" },
+      );
+      expect(await store.get(THREAD_ID)).toMatchObject({
+        pendingInterruptId: "interrupt-1",
+      });
+    },
+  );
+
+  it("still restricts allowlisted decisions to the original requester", async () => {
     await seedPendingReview(store);
 
     const outcome = await handleReviewDecision(
@@ -97,12 +153,135 @@ describe("handleReviewDecision", () => {
         actorId: "slack:U999",
         decision: "approve",
       },
-      { agent, conversation, store },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID, "slack:U999"]),
+      },
     );
 
     expect(outcome).toBe("unauthorized");
     expect(agent.resumeInputs).toEqual([]);
     expect(conversation.messages[0]).toMatch(/only the requester/i);
+  });
+
+  it("does not treat the same user id on another platform as the requester", async () => {
+    await seedPendingReview(store);
+
+    const outcome = await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: "discord:U123",
+        decision: "approve",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID, "discord:U123"]),
+      },
+    );
+
+    expect(outcome).toBe("unauthorized");
+    expect(agent.resumeInputs).toEqual([]);
+    expect(conversation.messages[0]).toMatch(/only the requester/i);
+  });
+
+  it("refuses a pending review that has no recorded requester", async () => {
+    await store.put({
+      threadId: THREAD_ID,
+      magentaSessionId: "session-1",
+      pendingInterruptId: "interrupt-1",
+      pendingActionRequests: [{ name: "mongodb__insert_many", args: {} }],
+      pendingReviewState: "pending",
+      updatedAt: new Date(),
+    });
+    agent.resumeResult = completed;
+
+    const outcome = await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: ACTOR_ID,
+        decision: "approve",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID]),
+      },
+    );
+
+    expect(outcome).toBe("unauthorized");
+    expect(agent.resumeInputs).toEqual([]);
+    expect(conversation.messages[0]).toMatch(/only the requester/i);
+    expect(await store.get(THREAD_ID)).toMatchObject({
+      pendingInterruptId: "interrupt-1",
+    });
+  });
+
+  it("leaves the review claim available after an unauthorized attempt", async () => {
+    await seedPendingReview(store);
+    agent.resumeResult = completed;
+
+    await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: "slack:U999",
+        decision: "approve",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID]),
+      },
+    );
+
+    const outcome = await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: ACTOR_ID,
+        decision: "approve",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID]),
+      },
+    );
+
+    expect(outcome).toBe("completed");
+    expect(agent.resumeInputs).toHaveLength(1);
+  });
+
+  it("allows the original allowlisted requester to approve", async () => {
+    await seedPendingReview(store);
+    agent.resumeResult = completed;
+
+    const outcome = await handleReviewDecision(
+      {
+        threadId: THREAD_ID,
+        interruptId: "interrupt-1",
+        actorId: ACTOR_ID,
+        decision: "approve",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set([ACTOR_ID]),
+      },
+    );
+
+    expect(outcome).toBe("completed");
+    expect(agent.resumeInputs).toHaveLength(1);
   });
 
   it("rejects stale action values and preserves the newer interrupt", async () => {

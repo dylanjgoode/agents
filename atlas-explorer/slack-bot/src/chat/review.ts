@@ -52,7 +52,7 @@ export async function handleReviewDecision(
   const sessionId = record.magentaSessionId;
 
   if (
-    record.pendingRequestedByActorId &&
+    !record.pendingRequestedByActorId ||
     record.pendingRequestedByActorId !== input.actorId
   ) {
     await dependencies.conversation.post(
