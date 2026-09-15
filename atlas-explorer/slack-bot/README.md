@@ -105,6 +105,10 @@ and its data disappears during graceful shutdown. You can then:
 - Mention `@AtlasExplorer Local` in a channel; the response starts a thread.
 - Send follow-ups in a thread already owned by the bot.
 
+Channel mention routing validates the Slack user ID in the raw event. A local
+app can therefore use a display name such as `AtlasExplorer Local` without a
+bot named `AtlasExplorer` treating that structured mention as its own.
+
 By default, the local bot invokes a deployed Magenta workspace. The Atlas MCP
 client credentials remain configured on Magenta and never enter the Slack bot
 environment.
@@ -122,6 +126,9 @@ bot's logs for:
 ```text
 Rejected unauthorized actor { actorId: 'slack:B0123456789' }
 ```
+
+Unauthorized bot messages are logged but do not receive a Slack denial reply,
+which prevents bot-authored denial messages from triggering one another.
 
 Add that exact `slack:B...` actor to `CHAT_ALLOWED_USER_IDS` alongside the
 trusted human actors, redeploy, and run the workflow again.

@@ -98,6 +98,64 @@ describe("handleConversationMessage", () => {
     });
   });
 
+  it("silently rejects an unauthorized bot", async () => {
+    agent.invokeResult = completed;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+
+    await handleConversationMessage(
+      {
+        threadId: THREAD_ID,
+        eventId: "event-1",
+        actorId: "slack:B999",
+        authorIsBot: true,
+        text: "Automated follow-up",
+      },
+      {
+        agent,
+        conversation,
+        logger,
+        store,
+        authorizedActorIds: new Set(["slack:U123"]),
+      },
+    );
+
+    expect(agent.invokeInputs).toEqual([]);
+    expect(conversation.messages).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Rejected unauthorized actor",
+      {
+        actorId: "slack:B999",
+      },
+    );
+  });
+
+  it("allows an explicitly authorized bot", async () => {
+    agent.invokeResult = completed;
+
+    await handleConversationMessage(
+      {
+        threadId: THREAD_ID,
+        eventId: "event-1",
+        actorId: "slack:B123",
+        authorIsBot: true,
+        text: "Run scheduled report",
+      },
+      {
+        agent,
+        conversation,
+        store,
+        authorizedActorIds: new Set(["slack:B123"]),
+      },
+    );
+
+    expect(agent.invokeInputs).toEqual([
+      {
+        actorId: "slack:B123",
+        message: "Run scheduled report",
+      },
+    ]);
+  });
+
   it("stores every interrupt and posts a cross-platform review card", async () => {
     agent.invokeResult = suspended;
 
