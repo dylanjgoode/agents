@@ -55,8 +55,16 @@ data the agent should explore. Project roles such as
 Copy `mcp-config.example.json` to ignored `mcp-config.json`. Replace
 `YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4 (`curl -4 ifconfig.me`).
 Keep the Magenta egress addresses from the example so a deployed workspace can
-call Managed MCP. Use separate configurations for local development and
-production.
+call Managed MCP.
+
+Create a **separate MCP configuration and token per environment** (local
+development, staging, production, and so on). Do not share credentials across
+environments. Set `mcpConfigName` using the `atlas-explorer-{environment}`
+pattern from `mcp-config.example.json` (for example,
+`atlas-explorer-local` or `atlas-explorer-prod`), then run
+`createGroupMcpConfig` and `createGroupMcpSecret` for each environment and
+store the resulting client ID and secret only in that environment's `.env` or
+Magenta secret store.
 
 Requires Atlas CLI 1.58 or later. Log in, then create the config against the
 target project (`groupId` is the Atlas project ID):
