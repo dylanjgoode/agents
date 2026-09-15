@@ -77,6 +77,26 @@ describe("registerChatHandlers", () => {
     ]);
   });
 
+  it("ignores a Slack name match without this bot's structured mention", async () => {
+    const message = testMessage(
+      "message-other-bot",
+      CHANNEL_THREAD_ID,
+      "@AtlasExplorer Local can you hear me?",
+      {
+        isMention: true,
+        raw: {
+          type: "message",
+          text: "<@B999|AtlasExplorer Local> can you hear me?",
+        },
+      },
+    );
+
+    await bot.processMessage(adapter, CHANNEL_THREAD_ID, message);
+
+    expect(await state.isSubscribed(CHANNEL_THREAD_ID)).toBe(false);
+    expect(agent.invokeInputs).toEqual([]);
+  });
+
   it("routes DMs without requiring a mention", async () => {
     await bot.processMessage(
       adapter,
@@ -248,7 +268,10 @@ function testMessage(
   id: string,
   threadId: string,
   text: string,
-  overrides: { isMention?: boolean } = {},
+  overrides: {
+    isMention?: boolean;
+    raw?: unknown;
+  } = {},
 ) {
   return createTestMessage(id, text, {
     threadId,
