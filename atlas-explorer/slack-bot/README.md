@@ -49,25 +49,44 @@ reported lifetime.
 
 ## Configure the Slack app
 
+Create a Slack app from a manifest. Use separate apps if you both run locally
+and deploy to Vercel so Socket Mode and the hosted webhook never share tokens.
+
 1. In [Slack app management](https://api.slack.com/apps), choose **Create New
-   App → From an app manifest** and paste `manifest.json`.
+   App → From an app manifest** and paste one of these files:
+   - For local Socket Mode: [`manifest.local.json`](./manifest.local.json).
+     Slack names the app **AtlasExplorer Local**, enables Socket Mode, and
+     omits Event Subscriptions / Interactivity request URLs so this app does
+     not compete with the hosted webhook. If multiple developers run locally
+     in the same workspace, each should create their own app, for example
+     `@AtlasExplorer Local {developer-name-foo}` and
+     `@AtlasExplorer Local {developer-name-bar}`.
+   - For the Vercel deployment: [`manifest.json`](./manifest.json). Slack
+     names the app **AtlasExplorer** and includes placeholder request URLs
+     you replace after deploy.
 2. Under **Basic Information → App-Level Tokens**, create a token with
    `connections:write`. This is `SLACK_APP_TOKEN` and is only used for local
    Socket Mode.
 3. Install the app to the workspace and copy its **Bot User OAuth Token** as
    `SLACK_BOT_TOKEN`.
-4. Copy `.env.example` to `.env` and set the Slack and Agentic target values.
-   Set `CHAT_ALLOWED_USER_IDS` to comma-separated, platform-qualified IDs such
-   as `slack:U0123456789` for trusted operators (copy each member ID from the
-   Slack profile menu).
+4. Copy `.env.example` to `.env` and set the Slack and Agentic target values
+   for the app you just created. Set `CHAT_ALLOWED_USER_IDS` to
+   comma-separated, platform-qualified IDs such as `slack:U0123456789` for
+   trusted operators (copy each member ID from the Slack profile menu).
 
-The manifest requests message/history access for DMs, public channels, and
-private channels. Add the app to each channel where users will mention it.
+Both manifests request message/history access for DMs, public channels, and
+private channels. Add the corresponding app to each channel where users will
+mention it.
 
 ## Run locally with Socket Mode
 
 The Slack bot can run entirely on localhost; Vercel and an inbound tunnel are
 not required. Socket Mode opens an outbound WebSocket to Slack.
+
+Use the **AtlasExplorer Local** app created from `manifest.local.json`. Put
+that app's bot token, signing secret, and app-level token in `.env`. Do not
+point local Socket Mode at the hosted AtlasExplorer app; those credentials
+belong to the Vercel webhook.
 
 ```bash
 pnpm install
@@ -82,9 +101,13 @@ subscriptions, locks, deduplication, queues, and Agentic workflow records all
 use the same production MongoDB implementations. The embedded database stops
 and its data disappears during graceful shutdown. You can then:
 
-- DM `@AtlasExplorer`; each top-level DM starts a new conversation.
-- Mention `@AtlasExplorer` in a channel; the response starts a thread.
+- DM `@AtlasExplorer Local`; each top-level DM starts a new conversation.
+- Mention `@AtlasExplorer Local` in a channel; the response starts a thread.
 - Send follow-ups in a thread already owned by the bot.
+
+Channel mention routing validates the Slack user ID in the raw event. A local
+app can therefore use a display name such as `AtlasExplorer Local` without a
+bot named `AtlasExplorer` treating that structured mention as its own.
 
 By default, the local bot invokes a deployed Magenta workspace. The Atlas MCP
 client credentials remain configured on Magenta and never enter the Slack bot
@@ -103,6 +126,9 @@ bot's logs for:
 ```text
 Rejected unauthorized actor { actorId: 'slack:B0123456789' }
 ```
+
+Unauthorized bot messages are logged but do not receive a Slack denial reply,
+which prevents bot-authored denial messages from triggering one another.
 
 Add that exact `slack:B...` actor to `CHAT_ALLOWED_USER_IDS` alongside the
 trusted human actors, redeploy, and run the workflow again.
@@ -221,12 +247,13 @@ export VERCEL_URL=https://atlas-explorer-three.vercel.app
    `pnpm vercel deploy --prebuilt --prod --scope "$VERCEL_SCOPE"`.
    Confirm the deployment is ready and that Vercel automatically advances
    `$VERCEL_URL`. Do not set a separate alias.
-5. Replace every `https://example.com/api/webhooks/slack` URL in the Slack
-   app settings with the stable webhook URL above. Configure both Event
-   Subscriptions and Interactivity & Shortcuts.
-6. Disable Socket Mode, save the Slack app changes, and reinstall only if
-   Slack requests it or OAuth scopes changed. Slack must accept Event
-   Subscriptions URL verification before testing messages.
+5. On the hosted **AtlasExplorer** app created from `manifest.json`, replace
+   every `https://example.com/api/webhooks/slack` URL with the stable webhook
+   URL above. Configure both Event Subscriptions and Interactivity &
+   Shortcuts. Leave the **AtlasExplorer Local** app on Socket Mode.
+6. Disable Socket Mode on the hosted app, save the Slack app changes, and
+   reinstall only if Slack requests it or OAuth scopes changed. Slack must
+   accept Event Subscriptions URL verification before testing messages.
 
 The thin Vercel handler passes the untouched request to
 `bot.webhooks.slack` and supplies Vercel's `waitUntil`, so the official adapter
@@ -297,7 +324,8 @@ pnpm vercel rollback <known-good-deployment-url> \
 
 Restore the prior Slack request path or Socket Mode. Keep the reusable
 `manifest.json` placeholders; do not commit deployment-specific URLs or
-credentials there.
+credentials there. Leave `manifest.local.json` Socket Mode-only, with no
+request URLs.
 
 ## Human review
 

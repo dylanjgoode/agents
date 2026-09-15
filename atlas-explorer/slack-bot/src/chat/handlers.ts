@@ -16,6 +16,7 @@ import {
   createConversationSurface,
   type DeliveryBoundary,
 } from "./surface.js";
+import { shouldIgnoreUnstructuredSlackMention } from "./slackMentions.js";
 import type {
   AgentGateway,
   HandlerLogger,
@@ -42,6 +43,22 @@ export function registerChatHandlers(
   options: ChatHandlerOptions,
 ): void {
   chat.onNewMention(async (thread, message) => {
+    if (
+      shouldIgnoreUnstructuredSlackMention(
+        thread.adapter,
+        message,
+      )
+    ) {
+      options.logger?.warn?.(
+        "Ignored Slack mention without this bot's user ID",
+        {
+          messageId: message.id,
+          threadId: thread.id,
+        },
+      );
+      return;
+    }
+
     const actorId = actorIdFor(thread, message);
     if (
       !options.authorizedActorIds ||
@@ -122,6 +139,7 @@ async function dispatchMessage(
       threadId: thread.id,
       eventId: `${thread.adapter.name}:${message.id}`,
       actorId: actorIdFor(thread, message),
+      authorIsBot: message.author.isBot === true,
       text: message.text,
     },
     {
