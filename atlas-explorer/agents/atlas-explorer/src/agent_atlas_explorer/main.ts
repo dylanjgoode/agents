@@ -12,7 +12,7 @@ import {
 } from "./agentPolicy.js";
 import { buildLLM } from "./llm.js";
 import { stripToolEchoMiddleware } from "./modelResponse.js";
-import { SYSTEM_PROMPT } from "./systemMessage.js";
+import { buildSystemPrompt } from "./systemMessage.js";
 import { recoverToolErrorsMiddleware } from "./toolErrors.js";
 import { App, MagentaToolPodBackend } from "@magenta/magenta-sdklanggraph-ts";
 
@@ -56,7 +56,7 @@ export const buildAgent = app.entrypoint(() => {
     }),
     {
       tools: availableAtlasTools as never,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: buildSystemPrompt(allowWriteOperations),
       skills: ["skills"],
       backend: withoutShellExecution(new MagentaToolPodBackend()) as never,
       checkpointer: (saver ?? false) as never,
