@@ -17,6 +17,7 @@ atlas-explorer/agents/atlas-explorer/
 ├── dev.yaml                           # local Agentic service ports
 ├── .env.example                       # copy to .env
 ├── mcp-config.example.json            # copy to ignored local MCP config
+├── mcp-secret-metadata.json           # secret TTL used with Atlas CLI
 ├── skills/                            # vendored MongoDB Agent Skills
 └── src/agent_atlas_explorer/
     ├── main.ts                        # Magenta deep agent
@@ -44,11 +45,58 @@ Set these local secrets in `.env`:
 - `ATLAS_MCP_CLIENT_SECRET`
 - `OPENAI_API_KEY`
 
-Create a dedicated MongoDB MCP configuration in Atlas before starting the
-agent. Grant only the Atlas roles the agent needs and add the environment's
-egress IP to the configuration's access list. The ignored `mcp-config.json`
-can hold the values used with the Atlas CLI. Use separate configurations for
-local development and production.
+Create a **project-level** MongoDB MCP configuration in Atlas before starting
+the agent. Atlas Admin API still calls a project a group, so this uses
+`createGroupMcpConfig` rather than the org-level API. A group config can only
+see clusters in that one Atlas project; put it on the project that holds the
+data the agent should explore. Project roles such as
+`GROUP_DATA_ACCESS_READ_WRITE` are invalid on `createOrgMcpConfig`.
+
+Copy `mcp-config.example.json` to ignored `mcp-config.json`. Replace
+`YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4 (`curl -4 ifconfig.me`).
+Keep the Magenta egress addresses from the example so a deployed workspace can
+call Managed MCP.
+
+Create a **separate MCP configuration and token per environment** (local
+development, staging, production, and so on). Do not share credentials across
+environments. Set `mcpConfigName` using the `atlas-explorer-{environment}`
+pattern from `mcp-config.example.json` (for example,
+`atlas-explorer-local` or `atlas-explorer-prod`), then run
+`createGroupMcpConfig` and `createGroupMcpSecret` for each environment and
+store the resulting client ID and secret only in that environment's `.env` or
+Magenta secret store.
+
+Requires Atlas CLI 1.58 or later. Log in, then create the config against the
+target project (`groupId` is the Atlas project ID):
+
+```bash
+atlas auth login -P mcp
+export GROUP_ID="<atlas-project-id>"
+
+atlas api remoteMcpConfigurations createGroupMcpConfig \
+  --groupId "$GROUP_ID" \
+  --file mcp-config.json \
+  -P mcp \
+  -o json
+```
+
+The response includes `mcpConfigId` (UUID of the MCP configuration) and
+`clientId` (the `mdb_sa_id_...` OAuth client). Pass **`mcpConfigId`**, not
+`clientId`, when minting the one-time secret:
+
+```bash
+atlas api remoteMcpConfigurations createGroupMcpSecret \
+  --groupId "$GROUP_ID" \
+  --mcpConfigId "$MCP_CONFIG_ID" \
+  --file mcp-secret-metadata.json \
+  -P mcp \
+  -o json
+```
+
+The secret is returned once. Store `clientId` as `ATLAS_MCP_CLIENT_ID` and the
+secret as `ATLAS_MCP_CLIENT_SECRET`. After swapping credentials, restart
+`agentic dev` and start a new Playground thread so the runtime does not reuse a
+cached token or an old cluster connection.
 
 For a deployed workspace, store the same values in Magenta's secret store:
 
@@ -67,10 +115,11 @@ Tool Pod calls.
 
 ## MCP credential lifecycle
 
-The MCP configuration is provisioned once in Atlas:
+The MCP configuration is provisioned once in Atlas, scoped to one project:
 
-1. The operator stores its client ID and secret in `.env` or Magenta's secret
-   store.
+1. The operator creates a group MCP config with `createGroupMcpConfig`, mints a
+   secret with `createGroupMcpSecret`, and stores the client ID and secret in
+   `.env` or Magenta's secret store.
 2. AER and Tool Pod processes exchange those credentials for short-lived OAuth
    access tokens.
 3. AER discovers MCP tools from `agent.yaml`; Tool Pods execute subsequent MCP
