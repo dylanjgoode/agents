@@ -45,10 +45,9 @@ Set these local secrets in `.env`:
 - `ATLAS_MCP_CLIENT_SECRET`
 - `OPENAI_API_KEY`
 
-Leave `ALLOW_WRITE_OPERATIONS` unset or empty unless this environment should
-expose write tools. Magenta currently injects application settings as secrets,
-so this flag is presence-based: any non-empty value, including `"false"`,
-enables writes.
+Leave `ALLOW_WRITE_OPERATIONS` unset, empty, or `"false"` unless this
+environment should expose write tools. Any other non-empty value enables
+writes.
 
 Create a **project-level** MongoDB MCP configuration in Atlas before starting
 the agent. Atlas Admin API still calls a project a group, so this uses
@@ -123,8 +122,8 @@ to prevent ordinary write-tool use:
 
 1. Provision a write-capable MCP configuration with only the Atlas roles the
    environment needs, such as `GROUP_DATA_ACCESS_READ_WRITE`.
-2. Set a non-empty `ALLOW_WRITE_OPERATIONS` secret locally or with
-   `agentic secret set ALLOW_WRITE_OPERATIONS`.
+2. Set `ALLOW_WRITE_OPERATIONS` to a non-empty value other than `"false"`
+   locally or with `agentic secret set ALLOW_WRITE_OPERATIONS`.
 
 The application selects OpenAI `gpt-5.6-luna` in `main.ts`. To use another
 provider, model, or custom-compatible endpoint, update that code together with
@@ -185,7 +184,10 @@ can be reused with additional Chat SDK adapters.
 
 - Atlas Explorer is read-only by default. The MCP configuration should use
   `GROUP_DATA_ACCESS_READ_ONLY`, and `ALLOW_WRITE_OPERATIONS` should stay
-  unset.
+  unset or `"false"`. The application also hides non-read MongoDB MCP tools
+  unless that secret is enabled; remaining tools then require HITL
+  approval. This application allowlist is a bridge until Magenta preserves
+  MCP tool annotations.
 - When both write opt-ins are present, persistent mutations are protected by
   LangChain HITL middleware using Magenta's persistent checkpointer and
   suspend/resume adapter. This includes database writes; Atlas cluster

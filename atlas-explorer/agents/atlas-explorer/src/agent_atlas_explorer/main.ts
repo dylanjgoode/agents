@@ -5,7 +5,11 @@ import "dotenv/config";
 import { humanInTheLoopMiddleware } from "langchain";
 
 import { withoutShellExecution } from "./agentBackend.js";
-import { MUTATIVE_MCP_INTERRUPT_ON, selectAtlasTools } from "./agentPolicy.js";
+import {
+  mutativeInterruptOn,
+  selectAtlasTools,
+  writeOperationsAllowed,
+} from "./agentPolicy.js";
 import { buildLLM } from "./llm.js";
 import { stripToolEchoMiddleware } from "./modelResponse.js";
 import { SYSTEM_PROMPT } from "./systemMessage.js";
@@ -25,12 +29,23 @@ log("INFO", "App created; Atlas MCP tools will be discovered from agent.yaml");
 export const buildAgent = app.entrypoint(() => {
   log("INFO", "Building atlas-explorer deep agent");
 
-  const allTools = selectAtlasTools(
-    app.getTools() as readonly { name: string }[],
+  const allowWriteOperations = writeOperationsAllowed();
+  log(
+    "INFO",
+    allowWriteOperations
+      ? "Write operations enabled; non-read MCP tools require HITL approval"
+      : "Read-only tool policy; write MCP tools are hidden",
+  );
+  const discoveredTools = app.getTools() as readonly { name: string }[];
+  const availableAtlasTools = selectAtlasTools(
+    discoveredTools,
+    allowWriteOperations,
   );
   const saver = app.checkpointer();
   const mutativeToolReview = humanInTheLoopMiddleware({
-    interruptOn: MUTATIVE_MCP_INTERRUPT_ON,
+    interruptOn: allowWriteOperations
+      ? mutativeInterruptOn(availableAtlasTools)
+      : {},
     descriptionPrefix: "MongoDB or Atlas operation pending approval",
   });
 
@@ -40,7 +55,7 @@ export const buildAgent = app.entrypoint(() => {
       model: "gpt-5.6-luna",
     }),
     {
-      tools: allTools as never,
+      tools: availableAtlasTools as never,
       systemPrompt: SYSTEM_PROMPT,
       skills: ["skills"],
       backend: withoutShellExecution(new MagentaToolPodBackend()) as never,

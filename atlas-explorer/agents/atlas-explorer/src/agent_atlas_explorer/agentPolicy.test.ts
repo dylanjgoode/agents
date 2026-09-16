@@ -1,48 +1,111 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  MUTATIVE_MCP_INTERRUPT_ON,
+  READ_ONLY_MCP_TOOLS,
+  mutativeInterruptOn,
   selectAtlasTools,
+  writeOperationsAllowed,
 } from "./agentPolicy.js";
 
-describe("Atlas tool policy", () => {
-  it("requires human approval for every persistent MongoDB and Atlas mutation", () => {
-    expect(MUTATIVE_MCP_INTERRUPT_ON).toEqual({
-      mongodb__drop_database: true,
-      mongodb__drop_collection: true,
-      mongodb__drop_index: true,
-      mongodb__insert_many: true,
-      mongodb__create_index: true,
-      mongodb__update_one: true,
-      mongodb__delete_many: true,
-      mongodb__update_many: true,
-      mongodb__rename_collection: true,
-      mongodb__create_collection: true,
-      mongodb__atlas_create_free_cluster: true,
-      mongodb__atlas_create_cluster: true,
-      mongodb__atlas_load_sample_dataset: true,
-      mongodb__atlas_create_access_list: true,
-      mongodb__atlas_create_db_user: true,
-      mongodb__atlas_create_project: true,
-      mongodb__atlas_upgrade_cluster: true,
-      mongodb__atlas_pause_resume_cluster: true,
-      mongodb__atlas_streams_build: true,
-      mongodb__atlas_streams_manage: true,
-      mongodb__atlas_streams_teardown: true,
-    });
+const discoveredCatalog = [
+  { name: "mongodb__find" },
+  { name: "mongodb__aggregate" },
+  { name: "mongodb__aggregate_db" },
+  { name: "mongodb__export" },
+  { name: "mongodb__drop_collection" },
+  { name: "mongodb__insert_many" },
+  { name: "mongodb__atlas_create_cluster" },
+  { name: "mongodb__future_mutating_operation" },
+  { name: "mongodb__atlas_local_connect_deployment" },
+  { name: "custom_unclassified_tool" },
+] as const;
+
+describe("writeOperationsAllowed", () => {
+  it("treats unset, empty, and false values as disabled", () => {
+    expect(writeOperationsAllowed({})).toBe(false);
+    expect(writeOperationsAllowed({ ALLOW_WRITE_OPERATIONS: "" })).toBe(false);
+    expect(writeOperationsAllowed({ ALLOW_WRITE_OPERATIONS: "   " })).toBe(
+      false,
+    );
+    expect(writeOperationsAllowed({ ALLOW_WRITE_OPERATIONS: "false" })).toBe(
+      false,
+    );
+    expect(writeOperationsAllowed({ ALLOW_WRITE_OPERATIONS: " FALSE " })).toBe(
+      false,
+    );
   });
 
-  it("hides Atlas-local tools that cannot run through Managed MCP", () => {
-    const tools = [
-      { name: "mongodb__find" },
-      { name: "mongodb__atlas_local_connect" },
-      { name: "shell_execute" },
-      { name: "custom_read_only_tool" },
-    ];
+  it("treats other non-empty values as enabled", () => {
+    expect(writeOperationsAllowed({ ALLOW_WRITE_OPERATIONS: "1" })).toBe(true);
+    expect(writeOperationsAllowed({ ALLOW_WRITE_OPERATIONS: "true" })).toBe(
+      true,
+    );
+  });
+});
 
-    expect(selectAtlasTools(tools)).toEqual([
-      { name: "mongodb__find" },
-      { name: "custom_read_only_tool" },
+describe("Atlas tool policy", () => {
+  it("allowlists current Managed MCP read, metadata, and connect tools", () => {
+    expect([...READ_ONLY_MCP_TOOLS].sort()).toEqual([
+      "mongodb__aggregate",
+      "mongodb__aggregate_db",
+      "mongodb__atlas_connect_cluster",
+      "mongodb__atlas_get_performance_advisor",
+      "mongodb__atlas_get_regions",
+      "mongodb__atlas_inspect_access_list",
+      "mongodb__atlas_inspect_cluster",
+      "mongodb__atlas_list_alerts",
+      "mongodb__atlas_list_clusters",
+      "mongodb__atlas_list_db_users",
+      "mongodb__atlas_list_orgs",
+      "mongodb__atlas_list_projects",
+      "mongodb__atlas_streams_discover",
+      "mongodb__collection_indexes",
+      "mongodb__collection_schema",
+      "mongodb__collection_storage_size",
+      "mongodb__connect",
+      "mongodb__count",
+      "mongodb__db_stats",
+      "mongodb__explain",
+      "mongodb__find",
+      "mongodb__list_collections",
+      "mongodb__list_databases",
+      "mongodb__list_knowledge_sources",
+      "mongodb__remote_atlas_connect",
+      "mongodb__search_knowledge",
     ]);
+  });
+
+  it("hides write and unknown tools when writes are disabled", () => {
+    expect(selectAtlasTools(discoveredCatalog, false)).toEqual([
+      { name: "mongodb__find" },
+      { name: "mongodb__aggregate" },
+      { name: "mongodb__aggregate_db" },
+    ]);
+  });
+
+  it("exposes non-read MCP tools for HITL when writes are enabled", () => {
+    const selected = selectAtlasTools(discoveredCatalog, true);
+
+    expect(selected).toEqual([
+      { name: "mongodb__find" },
+      { name: "mongodb__aggregate" },
+      { name: "mongodb__aggregate_db" },
+      { name: "mongodb__export" },
+      { name: "mongodb__drop_collection" },
+      { name: "mongodb__insert_many" },
+      { name: "mongodb__atlas_create_cluster" },
+      { name: "mongodb__future_mutating_operation" },
+      { name: "mongodb__atlas_local_connect_deployment" },
+      { name: "custom_unclassified_tool" },
+    ]);
+    expect(mutativeInterruptOn(selected)).toEqual({
+      mongodb__export: true,
+      mongodb__drop_collection: true,
+      mongodb__insert_many: true,
+      mongodb__atlas_create_cluster: true,
+      mongodb__future_mutating_operation: true,
+      mongodb__atlas_local_connect_deployment: true,
+      custom_unclassified_tool: true,
+    });
   });
 });
