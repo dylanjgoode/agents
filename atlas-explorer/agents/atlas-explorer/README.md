@@ -5,7 +5,7 @@ Agentic Platform. It combines Magenta's audited deep-agent runtime with Atlas
 Managed MCP tools and the MongoDB Agent Skills bundle.
 
 **Features:** Deep-agent planning · Atlas Managed MCP · MongoDB skills ·
-platform checkpoints · runtime approval for persistent mutations
+platform checkpoints · read-only by default · runtime approval for writes
 
 ## Layout
 
@@ -45,12 +45,24 @@ Set these local secrets in `.env`:
 - `ATLAS_MCP_CLIENT_SECRET`
 - `OPENAI_API_KEY`
 
+Leave `ALLOW_WRITE_OPERATIONS` unset or empty unless this environment should
+expose write tools. Magenta currently injects application settings as secrets,
+so this flag is presence-based: any non-empty value, including `"false"`,
+enables writes.
+
 Create a **project-level** MongoDB MCP configuration in Atlas before starting
 the agent. Atlas Admin API still calls a project a group, so this uses
 `createGroupMcpConfig` rather than the org-level API. A group config can only
 see clusters in that one Atlas project; put it on the project that holds the
 data the agent should explore. Project roles such as
-`GROUP_DATA_ACCESS_READ_WRITE` are invalid on `createOrgMcpConfig`.
+`GROUP_DATA_ACCESS_READ_ONLY` are invalid on `createOrgMcpConfig`.
+
+Assign Atlas roles on the MCP configuration itself. `createGroupMcpConfig`
+creates that identity; `createGroupMcpSecret` only mints a client secret that
+inherits the configuration's roles and read-only setting. The example config
+grants `GROUP_DATA_ACCESS_READ_ONLY`, which also inherits Project Read Only
+control-plane privileges. Keep Atlas MCP read-only mode enabled unless this
+environment is intentionally write-capable.
 
 Copy `mcp-config.example.json` to ignored `mcp-config.json`. Replace
 `YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4 (`curl -4 ifconfig.me`).
@@ -106,6 +118,14 @@ agentic secret set ATLAS_MCP_CLIENT_SECRET
 agentic secret set OPENAI_API_KEY
 ```
 
+Writes require two independent opt-ins. Either remaining read-only is enough
+to prevent ordinary write-tool use:
+
+1. Provision a write-capable MCP configuration with only the Atlas roles the
+   environment needs, such as `GROUP_DATA_ACCESS_READ_WRITE`.
+2. Set a non-empty `ALLOW_WRITE_OPERATIONS` secret locally or with
+   `agentic secret set ALLOW_WRITE_OPERATIONS`.
+
 The application selects OpenAI `gpt-5.6-luna` in `main.ts`. To use another
 provider, model, or custom-compatible endpoint, update that code together with
 the provider-key entries under `required_secrets` and the Tool Pod destination
@@ -117,9 +137,10 @@ Tool Pod calls.
 
 The MCP configuration is provisioned once in Atlas, scoped to one project:
 
-1. The operator creates a group MCP config with `createGroupMcpConfig`, mints a
-   secret with `createGroupMcpSecret`, and stores the client ID and secret in
-   `.env` or Magenta's secret store.
+1. The operator creates a group MCP config with `createGroupMcpConfig`,
+   assigning least-privilege roles there. `createGroupMcpSecret` then mints a
+   secret that inherits those roles. Store the client ID and secret in `.env`
+   or Magenta's secret store.
 2. AER and Tool Pod processes exchange those credentials for short-lived OAuth
    access tokens.
 3. AER discovers MCP tools from `agent.yaml`; Tool Pods execute subsequent MCP
@@ -155,19 +176,26 @@ can be reused with additional Chat SDK adapters.
   run without approval.
 - Ask it to diagnose a query or propose an index. The agent can load the
   relevant MongoDB skill on demand.
-- Ask it to drop a collection. The graph suspends before the MCP call and
+- Ask it to drop a collection. With the default read-only MCP identity and
+  unset `ALLOW_WRITE_OPERATIONS`, the agent cannot execute that mutation. After
+  both write opt-ins are set, the graph suspends before the MCP call and
   resumes only after an approve/edit/reject/respond decision.
 
 ## Safety and runtime notes
 
-- Every persistent mutation is protected by LangChain HITL middleware using
-  Magenta's persistent checkpointer and suspend/resume adapter. This includes
-  database writes; Atlas cluster creation, upgrades, and pause/resume; sample
-  dataset loads; project, database-user, and access-list creation; and Atlas
-  Streams build, management, and teardown operations.
+- Atlas Explorer is read-only by default. The MCP configuration should use
+  `GROUP_DATA_ACCESS_READ_ONLY`, and `ALLOW_WRITE_OPERATIONS` should stay
+  unset.
+- When both write opt-ins are present, persistent mutations are protected by
+  LangChain HITL middleware using Magenta's persistent checkpointer and
+  suspend/resume adapter. This includes database writes; Atlas cluster
+  creation, upgrades, and pause/resume; sample dataset loads; project,
+  database-user, and access-list creation; and Atlas Streams build,
+  management, and teardown operations.
 - `aggregate` remains available for read-only exploration; the agent is
   explicitly forbidden from using `$out` or `$merge` write stages because HITL
-  is applied at tool granularity.
+  is applied at tool granularity. A read-only Atlas credential is the hard
+  boundary for those argument-dependent writes.
 - Deep-agent file operations stay on Magenta's audited Tool Pod backend, but
   the model is not given general-purpose shell execution that could read
   process credential files outside the filesystem sandbox.
@@ -176,7 +204,6 @@ can be reused with additional Chat SDK adapters.
 - OpenAI Responses tool definitions echoed in `response_metadata` are removed
   from prior messages before model calls and from new responses before
   checkpointing, keeping durable sessions compact.
-- `atlas-local-*` tools are hidden because they cannot run against Managed MCP.
 - The Magenta SDK dependencies are pinned to one tested commit in both
   `package.json` and `pnpm-workspace.yaml`.
 - Zod is pinned to `4.4.3`; newer `4.5.x` releases currently break Magenta's
