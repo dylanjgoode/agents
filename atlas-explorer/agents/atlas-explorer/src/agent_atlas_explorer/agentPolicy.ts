@@ -2,8 +2,7 @@
  * Magenta sanitizes MCP hyphens to underscores and prefixes the server name.
  *
  * This explicit allowlist is a shipping bridge until Magenta preserves MCP
- * tool annotations on `app.getTools()`. See
- * docs/bug-reports/magenta-drops-mcp-tool-annotations.md.
+ * tool annotations on `app.getTools()`.
  *
  * Names follow Atlas Managed MCP `read`, `metadata`, and `connect` tools.
  * Local-only tools such as `export`, `mongodb-logs`, and `switch-connection`
