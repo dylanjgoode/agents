@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  READ_ONLY_SYSTEM_PROMPT,
+  WRITE_ENABLED_SYSTEM_PROMPT,
+} from "./systemMessage.js";
+
 const harness = vi.hoisted(() => {
   const tools = [
     { name: "mongodb__find" },
@@ -140,6 +145,7 @@ describe("Atlas Explorer graph assembly", () => {
       harness.model,
       expect.objectContaining({
         tools: [harness.tools[0]],
+        systemPrompt: READ_ONLY_SYSTEM_PROMPT,
         skills: ["skills"],
         checkpointer: harness.checkpointer,
         middleware: expect.arrayContaining([
@@ -176,6 +182,10 @@ describe("Atlas Explorer graph assembly", () => {
     builder();
 
     expect(assembledTools()).toEqual([harness.tools[0]]);
+    expect(
+      (harness.deepAgent.mock.calls[0]?.[1] as { systemPrompt?: string })
+        .systemPrompt,
+    ).toBe(READ_ONLY_SYSTEM_PROMPT);
     expect(harness.hitlConfig).toEqual({
       interruptOn: {},
       descriptionPrefix: "MongoDB or Atlas operation pending approval",
@@ -204,6 +214,10 @@ describe("Atlas Explorer graph assembly", () => {
       harness.tools[1],
       harness.tools[2],
     ]);
+    expect(
+      (harness.deepAgent.mock.calls[0]?.[1] as { systemPrompt?: string })
+        .systemPrompt,
+    ).toBe(WRITE_ENABLED_SYSTEM_PROMPT);
     expect(harness.hitlConfig).toEqual({
       interruptOn: {
         mongodb__drop_collection: true,
