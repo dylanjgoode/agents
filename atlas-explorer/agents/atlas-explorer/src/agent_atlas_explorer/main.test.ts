@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => {
   const tools = [
     { name: "mongodb__find" },
-    { name: "mongodb__atlas_local_connect" },
+    { name: "mongodb__drop_collection" },
+    { name: "mongodb__future_mutating_operation" },
+    { name: "shell_execute" },
   ];
   const model = { id: "orchestrator-model" };
   const checkpointer = { id: "platform-checkpointer" };
@@ -82,14 +84,43 @@ vi.mock("./llm.js", () => ({
   buildLLM: harness.buildLLM,
 }));
 
+async function loadBuilder(): Promise<() => unknown> {
+  if (harness.builder === undefined) {
+    await import("./main.js");
+  }
+  if (harness.builder === undefined) {
+    throw new Error("agent builder was not registered");
+  }
+  return harness.builder;
+}
+
+function assembledTools(): { name: string }[] {
+  return (
+    harness.deepAgent.mock.calls[0]?.[1] as {
+      tools: { name: string }[];
+    }
+  ).tools;
+}
+
 describe("Atlas Explorer graph assembly", () => {
+  const previousAgentWorkdir = process.env.AGENTIC_AGENT_WORKDIR;
+  const previousAllowWrites = process.env.ALLOW_WRITE_OPERATIONS;
+
   beforeEach(() => {
     harness.buildLLM.mockClear();
     harness.deepAgent.mockClear();
+    delete process.env.ALLOW_WRITE_OPERATIONS;
+  });
+
+  afterEach(() => {
+    if (previousAllowWrites === undefined) {
+      delete process.env.ALLOW_WRITE_OPERATIONS;
+    } else {
+      process.env.ALLOW_WRITE_OPERATIONS = previousAllowWrites;
+    }
   });
 
   it("builds a single Magenta deep agent with MCP tools, skills, and platform checkpoints", async () => {
-    const previousAgentWorkdir = process.env.AGENTIC_AGENT_WORKDIR;
     delete process.env.AGENTIC_AGENT_WORKDIR;
 
     const { app } = await import("./main.js");
@@ -122,29 +153,7 @@ describe("Atlas Explorer graph assembly", () => {
       "subagents",
     );
     expect(harness.hitlConfig).toEqual({
-      interruptOn: {
-        mongodb__drop_database: true,
-        mongodb__drop_collection: true,
-        mongodb__drop_index: true,
-        mongodb__insert_many: true,
-        mongodb__create_index: true,
-        mongodb__update_one: true,
-        mongodb__delete_many: true,
-        mongodb__update_many: true,
-        mongodb__rename_collection: true,
-        mongodb__create_collection: true,
-        mongodb__atlas_create_free_cluster: true,
-        mongodb__atlas_create_cluster: true,
-        mongodb__atlas_load_sample_dataset: true,
-        mongodb__atlas_create_access_list: true,
-        mongodb__atlas_create_db_user: true,
-        mongodb__atlas_create_project: true,
-        mongodb__atlas_upgrade_cluster: true,
-        mongodb__atlas_pause_resume_cluster: true,
-        mongodb__atlas_streams_build: true,
-        mongodb__atlas_streams_manage: true,
-        mongodb__atlas_streams_teardown: true,
-      },
+      interruptOn: {},
       descriptionPrefix: "MongoDB or Atlas operation pending approval",
     });
     const backend = (
@@ -160,5 +169,36 @@ describe("Atlas Explorer graph assembly", () => {
     } else {
       process.env.AGENTIC_AGENT_WORKDIR = previousAgentWorkdir;
     }
+  });
+
+  it("keeps write tools hidden when ALLOW_WRITE_OPERATIONS is empty", async () => {
+    process.env.ALLOW_WRITE_OPERATIONS = "";
+    const builder = await loadBuilder();
+    builder();
+
+    expect(assembledTools()).toEqual([harness.tools[0]]);
+    expect(harness.hitlConfig).toEqual({
+      interruptOn: {},
+      descriptionPrefix: "MongoDB or Atlas operation pending approval",
+    });
+  });
+
+  it("exposes write tools behind HITL when ALLOW_WRITE_OPERATIONS is set", async () => {
+    process.env.ALLOW_WRITE_OPERATIONS = "false";
+    const builder = await loadBuilder();
+    builder();
+
+    expect(assembledTools()).toEqual([
+      harness.tools[0],
+      harness.tools[1],
+      harness.tools[2],
+    ]);
+    expect(harness.hitlConfig).toEqual({
+      interruptOn: {
+        mongodb__drop_collection: true,
+        mongodb__future_mutating_operation: true,
+      },
+      descriptionPrefix: "MongoDB or Atlas operation pending approval",
+    });
   });
 });

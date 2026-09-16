@@ -1,6 +1,6 @@
 # Bug report triage index
 
-This directory contains 21 reports from the Atlas Explorer migration and local
+This directory contains 22 reports from the Atlas Explorer migration and local
 runtime investigation. Severity and priority are proposed; component owners
 should reproduce and triage each report before scheduling work.
 
@@ -9,6 +9,7 @@ should reproduce and triage each report before scheduling work.
 - [Review UI cannot resume agent-interrupt executions](./agent-interrupt-review-resume-409.md) — Confirmed / high: Approve, Edit, and Reject use an incompatible resume path and return HTTP 409.
 - [OpenAI Responses tool metadata grows sessions until HTTP 413](./openai-response-tool-metadata-body-growth-413.md) — Confirmed / high: redundant historical tool catalogs grow durable sessions past the Tool Pod request limit.
 - [Magenta message schemas are incompatible with Zod 4.5](./magenta-zod-45-discriminator-incompatibility.md) — Confirmed / high: an allowed Zod resolution fails the first model request; exact `4.4.3` works.
+- [Magenta drops MCP tool annotations](./magenta-drops-mcp-tool-annotations.md) — Confirmed / high: remote MCP safety hints are discarded before application policy can inspect them.
 - [Mutative tool policy fails open on catalog drift](./mutative-tool-policy-fails-open-on-catalog-drift.md) — Confirmed policy defect / high: newly discovered tools are exposed without an explicit effect classification.
 - [Playground renders successful agent suspension as an error](./playground-renders-successful-agent-suspension-as-error.md) — Confirmed / high: the UI simultaneously presents failure and awaiting-review states.
 

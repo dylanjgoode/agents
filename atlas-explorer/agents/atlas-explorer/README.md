@@ -185,7 +185,10 @@ can be reused with additional Chat SDK adapters.
 
 - Atlas Explorer is read-only by default. The MCP configuration should use
   `GROUP_DATA_ACCESS_READ_ONLY`, and `ALLOW_WRITE_OPERATIONS` should stay
-  unset.
+  unset. The application also hides non-read MongoDB MCP tools unless that
+  secret is present; remaining tools then require HITL approval. This
+  application allowlist is a bridge until Magenta preserves MCP tool
+  annotations.
 - When both write opt-ins are present, persistent mutations are protected by
   LangChain HITL middleware using Magenta's persistent checkpointer and
   suspend/resume adapter. This includes database writes; Atlas cluster
