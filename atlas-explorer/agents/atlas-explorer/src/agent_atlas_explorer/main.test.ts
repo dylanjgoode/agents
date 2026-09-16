@@ -4,6 +4,8 @@ import {
   READ_ONLY_SYSTEM_PROMPT,
   WRITE_ENABLED_SYSTEM_PROMPT,
 } from "./systemMessage.js";
+import { stampResumeClientUserMiddleware } from "./stampResume.js";
+import { prepareAtlasExplorerInput } from "./userRun.js";
 
 const harness = vi.hoisted(() => {
   const tools = [
@@ -27,6 +29,7 @@ const harness = vi.hoisted(() => {
     agentWorkdirAtAppConstruction: undefined as string | undefined,
     appName: undefined as string | undefined,
     builder: undefined as (() => unknown) | undefined,
+    prepareAgentInput: undefined as ((...args: never[]) => unknown) | undefined,
     buildLLM: vi.fn((_options: unknown) => model),
     deepAgent: vi.fn((_model: unknown, _options: unknown) => graph),
     run: vi.fn(),
@@ -59,6 +62,11 @@ vi.mock("@magenta/magenta-sdklanggraph-ts", () => ({
 
     entrypoint(fn: () => unknown): () => unknown {
       harness.builder = fn;
+      return fn;
+    }
+
+    prepareAgentInput(fn: (...args: never[]) => unknown): (...args: never[]) => unknown {
+      harness.prepareAgentInput = fn;
       return fn;
     }
 
@@ -148,12 +156,15 @@ describe("Atlas Explorer graph assembly", () => {
         systemPrompt: READ_ONLY_SYSTEM_PROMPT,
         skills: ["skills"],
         checkpointer: harness.checkpointer,
-        middleware: expect.arrayContaining([
+        middleware: [
+          stampResumeClientUserMiddleware,
           expect.objectContaining({ name: "stripOpenAIToolEcho" }),
           harness.hitlMiddleware,
-        ]),
+          expect.objectContaining({ name: "recoverAtlasToolErrors" }),
+        ],
       }),
     );
+    expect(harness.prepareAgentInput).toBe(prepareAtlasExplorerInput);
     expect(harness.deepAgent.mock.calls[0]?.[1]).not.toHaveProperty(
       "subagents",
     );
