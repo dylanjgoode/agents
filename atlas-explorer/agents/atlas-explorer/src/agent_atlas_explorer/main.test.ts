@@ -5,7 +5,6 @@ const harness = vi.hoisted(() => {
     { name: "mongodb__find" },
     { name: "mongodb__drop_collection" },
     { name: "mongodb__future_mutating_operation" },
-    { name: "shell_execute" },
   ];
   const model = { id: "orchestrator-model" };
   const checkpointer = { id: "platform-checkpointer" };
@@ -183,8 +182,20 @@ describe("Atlas Explorer graph assembly", () => {
     });
   });
 
-  it("exposes write tools behind HITL when ALLOW_WRITE_OPERATIONS is set", async () => {
+  it("keeps write tools hidden when ALLOW_WRITE_OPERATIONS is false", async () => {
     process.env.ALLOW_WRITE_OPERATIONS = "false";
+    const builder = await loadBuilder();
+    builder();
+
+    expect(assembledTools()).toEqual([harness.tools[0]]);
+    expect(harness.hitlConfig).toEqual({
+      interruptOn: {},
+      descriptionPrefix: "MongoDB or Atlas operation pending approval",
+    });
+  });
+
+  it("exposes write tools behind HITL when ALLOW_WRITE_OPERATIONS is set", async () => {
+    process.env.ALLOW_WRITE_OPERATIONS = "1";
     const builder = await loadBuilder();
     builder();
 
