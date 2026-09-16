@@ -37,10 +37,15 @@ export const buildAgent = app.entrypoint(() => {
       : "Read-only tool policy; write MCP tools are hidden",
   );
   const discoveredTools = app.getTools() as readonly { name: string }[];
-  const allTools = selectAtlasTools(discoveredTools, allowWriteOperations);
+  const availableAtlasTools = selectAtlasTools(
+    discoveredTools,
+    allowWriteOperations,
+  );
   const saver = app.checkpointer();
   const mutativeToolReview = humanInTheLoopMiddleware({
-    interruptOn: allowWriteOperations ? mutativeInterruptOn(allTools) : {},
+    interruptOn: allowWriteOperations
+      ? mutativeInterruptOn(availableAtlasTools)
+      : {},
     descriptionPrefix: "MongoDB or Atlas operation pending approval",
   });
 
@@ -50,7 +55,7 @@ export const buildAgent = app.entrypoint(() => {
       model: "gpt-5.6-luna",
     }),
     {
-      tools: allTools as never,
+      tools: availableAtlasTools as never,
       systemPrompt: SYSTEM_PROMPT,
       skills: ["skills"],
       backend: withoutShellExecution(new MagentaToolPodBackend()) as never,
