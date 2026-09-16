@@ -7,6 +7,10 @@ const manifest = readFileSync(
   "utf8",
 );
 
+const mcpConfig = JSON.parse(
+  readFileSync(new URL("../../mcp-config.example.json", import.meta.url), "utf8"),
+) as { roles: string[] };
+
 describe("agent.yaml MCP authentication", () => {
   it("injects dedicated MCP credentials without runtime bootstrap access", () => {
     expect(manifest).toMatch(
@@ -30,5 +34,11 @@ describe("agent.yaml MCP authentication", () => {
     expect(manifest).not.toMatch(
       /api4\.ipify\.org|ifconfig\.me|icanhazip\.com/,
     );
+  });
+});
+
+describe("example MCP configuration", () => {
+  it("defaults the Atlas identity to project data-access read-only", () => {
+    expect(mcpConfig.roles).toEqual(["GROUP_DATA_ACCESS_READ_ONLY"]);
   });
 });
