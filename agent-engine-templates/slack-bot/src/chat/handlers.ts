@@ -33,6 +33,7 @@ import type { ThreadStore } from "../store/threadStore.js";
 export interface ChatHandlerOptions {
   agent: AgentGateway;
   authorizedActorIds?: ReadonlySet<string>;
+  botName: string;
   deliveryForAdapter?: (
     adapter: Adapter,
   ) => DeliveryBoundary | undefined;
@@ -106,6 +107,7 @@ export function registerChatHandlers(
         return;
       }
       const conversation = createConversationSurface(event.thread, {
+        botName: options.botName,
         delivery: options.deliveryForAdapter?.(event.adapter),
         reviewMessageId: event.messageId,
       });
@@ -141,6 +143,7 @@ export function registerChatHandlers(
         },
         {
           agent: options.agent,
+          botName: options.botName,
           conversation,
           store: options.store,
           ...(options.authorizedActorIds
@@ -170,7 +173,9 @@ async function dispatchMessage(
     },
     {
       agent: options.agent,
+      botName: options.botName,
       conversation: createConversationSurface(thread, {
+        botName: options.botName,
         delivery: options.deliveryForAdapter?.(thread.adapter),
       }),
       store: options.store,

@@ -13,6 +13,8 @@ import {
   REVIEW_REJECT_ACTION_ID,
 } from "./cards.js";
 
+const BOT_NAME = "TestBot";
+
 const HITL_DESCRIPTION = `MongoDB or Atlas operation pending approval
 
 Tool: mongodb__insert_many
@@ -36,9 +38,11 @@ describe("buildReviewCard", () => {
         },
       ],
       "interrupt-1",
+      BOT_NAME,
     ) as PostableCard;
 
     expect(message.fallbackText).toMatch(/requires approval/i);
+    expect(message.fallbackText).toContain(BOT_NAME);
     expect(message.card.title).toBe("Atlas operation requires approval");
     expect(message.card.subtitle).toBe("mongodb__insert_many");
     expect(textContents(message)).toEqual([
@@ -90,6 +94,7 @@ describe("buildReviewCard", () => {
         },
       ],
       "interrupt-2",
+      BOT_NAME,
     ) as PostableCard;
 
     expect(message.card.subtitle).toBe("2 operations");
@@ -126,6 +131,7 @@ describe("buildReviewCard", () => {
         args: { index },
       })),
       "interrupt-overflow",
+      BOT_NAME,
     ) as PostableCard;
 
     expect(message.card.subtitle).toBe("45 operations");

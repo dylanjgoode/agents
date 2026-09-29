@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadConfig } from "./config.js";
+import { loadConfig } from "./loadConfig.js";
+
+const staticConfig = vi.hoisted(() => ({ name: "" }));
+vi.mock("./config.js", () => ({ slackBotConfig: staticConfig }));
+
+const DEFAULT_BOT_NAME = "AtlasExplorer";
+const CONFIG_BOT_NAME = "ConfigBot";
+const ENV_BOT_NAME = "EnvBot";
 
 const sharedEnv = {
   SLACK_BOT_TOKEN: "xoxb-test",
@@ -12,6 +19,10 @@ const sharedEnv = {
 };
 
 describe("loadConfig", () => {
+  beforeEach(() => {
+    staticConfig.name = "";
+  });
+
   it("loads Socket Mode without a MongoDB connection", () => {
     const config = loadConfig(
       {
@@ -28,7 +39,7 @@ describe("loadConfig", () => {
       },
       slack: {
         appToken: "xapp-test",
-        botDisplayName: "AtlasExplorer",
+        botDisplayName: DEFAULT_BOT_NAME,
         botToken: "xoxb-test",
       },
       agentic: {
@@ -44,6 +55,60 @@ describe("loadConfig", () => {
       store: {
         databaseName: "atlas_explorer_slack",
       },
+    });
+  });
+
+  describe("bot display name", () => {
+    const socketEnv = { ...sharedEnv, SLACK_APP_TOKEN: "xapp-test" };
+
+    it("uses a trimmed SLACK_BOT_DISPLAY_NAME", () => {
+      const config = loadConfig(
+        { ...socketEnv, SLACK_BOT_DISPLAY_NAME: ` ${ENV_BOT_NAME} ` },
+        "socket",
+      );
+
+      expect(config.slack.botDisplayName).toBe(ENV_BOT_NAME);
+    });
+
+    it("prefers SLACK_BOT_DISPLAY_NAME over the checked-in config name", () => {
+      staticConfig.name = CONFIG_BOT_NAME;
+
+      const config = loadConfig(
+        { ...socketEnv, SLACK_BOT_DISPLAY_NAME: ENV_BOT_NAME },
+        "socket",
+      );
+
+      expect(config.slack.botDisplayName).toBe(ENV_BOT_NAME);
+    });
+
+    it("uses the trimmed checked-in config name when the env var is unset", () => {
+      staticConfig.name = ` ${CONFIG_BOT_NAME} `;
+
+      const config = loadConfig(socketEnv, "socket");
+
+      expect(config.slack.botDisplayName).toBe(CONFIG_BOT_NAME);
+    });
+
+    it("uses the checked-in config name when the env var is blank", () => {
+      staticConfig.name = CONFIG_BOT_NAME;
+
+      const config = loadConfig(
+        { ...socketEnv, SLACK_BOT_DISPLAY_NAME: "   " },
+        "socket",
+      );
+
+      expect(config.slack.botDisplayName).toBe(CONFIG_BOT_NAME);
+    });
+
+    it("falls back to AtlasExplorer when the env var and config name are blank", () => {
+      staticConfig.name = "   ";
+
+      const config = loadConfig(
+        { ...socketEnv, SLACK_BOT_DISPLAY_NAME: "   " },
+        "socket",
+      );
+
+      expect(config.slack.botDisplayName).toBe(DEFAULT_BOT_NAME);
     });
   });
 

@@ -3,10 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createConversationSurface } from "./surface.js";
 
+const BOT_NAME = "TestBot";
+
 describe("createConversationSurface", () => {
   it("uses normalized thread operations for posts, delivery, and status", async () => {
     const thread = fakeThread();
-    const surface = createConversationSurface(thread);
+    const surface = createConversationSurface(thread, {
+      botName: BOT_NAME,
+    });
 
     await surface.post("Hello");
     await surface.deliver("**Done**", "delivery-1");
@@ -29,6 +33,7 @@ describe("createConversationSurface", () => {
       .fn()
       .mockResolvedValue("delivered");
     const surface = createConversationSurface(thread, {
+      botName: BOT_NAME,
       delivery: { deliver, getDeliveryStatus },
     });
 
@@ -47,6 +52,7 @@ describe("createConversationSurface", () => {
   it("edits the originating review message through the generic adapter", async () => {
     const thread = fakeThread();
     const surface = createConversationSurface(thread, {
+      botName: BOT_NAME,
       reviewMessageId: "message-1",
     });
 
@@ -55,7 +61,7 @@ describe("createConversationSurface", () => {
     expect(thread.adapter.editMessage).toHaveBeenCalledWith(
       thread.id,
       "message-1",
-      "Approved by the requester. Atlas Explorer is continuing.",
+      `Approved by the requester. ${BOT_NAME} is continuing.`,
     );
   });
 });
