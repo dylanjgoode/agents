@@ -1,0 +1,60 @@
+name: Agent unit tests
+
+on:
+  pull_request:
+    paths:
+      - "agents/**"
+      - "packages/agent-engine-core/**"
+      - "packages/atlas-explorer-agent/**"
+      - "packages/query-analysis-agent/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/actions/unit-test/**"
+      - ".github/workflows/unit-tests-agents.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "agents/**"
+      - "packages/agent-engine-core/**"
+      - "packages/atlas-explorer-agent/**"
+      - "packages/query-analysis-agent/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/actions/unit-test/**"
+      - ".github/workflows/unit-tests-agents.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: agent-engine-core
+            command: pnpm --filter @repo/agent-engine-core test
+          - name: atlas-explorer-agent
+            command: pnpm --filter @repo/atlas-explorer-agent test
+          - name: atlas-explorer
+            command: pnpm --filter atlas-explorer test
+          - name: query-analysis
+            command: pnpm --filter @repo/query-analysis-agent test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/unit-test
+        with:
+          command: ${{ matrix.command }}

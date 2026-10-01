@@ -8,7 +8,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
-      - ".github/workflows/unit-tests.yml"
+      - ".github/actions/unit-test/**"
       - ".github/workflows/unit-tests-slack-bot.yml"
   push:
     branches:
@@ -19,7 +19,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
-      - ".github/workflows/unit-tests.yml"
+      - ".github/actions/unit-test/**"
       - ".github/workflows/unit-tests-slack-bot.yml"
 
 concurrency:
@@ -32,7 +32,21 @@ permissions:
 
 jobs:
   test:
-    uses: ./.github/workflows/unit-tests.yml
-    with:
-      working-directory: .
-      test-command: pnpm --filter @repo/agent-engine-chat test && pnpm --filter @repo/atlas-explorer-slack-bot test
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: agent-engine-chat
+            command: pnpm --filter @repo/agent-engine-chat test
+          - name: atlas-explorer-slack-bot
+            command: pnpm --filter @repo/atlas-explorer-slack-bot test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/unit-test
+        with:
+          command: ${{ matrix.command }}
