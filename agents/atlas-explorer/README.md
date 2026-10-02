@@ -1,7 +1,7 @@
-# Atlas Explorer (Magenta TypeScript)
+# Atlas Explorer (Agent Engine TypeScript)
 
-Atlas Explorer is a MongoDB and Atlas operations agent running on the Magenta
-Agentic Platform. It combines Magenta's audited deep-agent runtime with Atlas
+Atlas Explorer is a MongoDB and Atlas operations agent running on Agent
+Engine. It combines Agent Engine's audited deep-agent runtime with Atlas
 Managed MCP tools and the MongoDB Agent Skills bundle.
 
 **Features:** Deep-agent planning · Atlas Managed MCP · MongoDB skills ·
@@ -12,14 +12,16 @@ platform checkpoints · read-only by default · runtime approval for writes
 ```
 agents/atlas-explorer/
 ├── agent.yaml                         # app, MCP, features, and required secret names
-├── package.json / tsconfig.json       # TypeScript app and esbuild bundle
+├── package.json / tsconfig*.json      # TypeScript app, test config, and esbuild bundle
+├── vitest*.config.ts                  # unit and integration test configs
 ├── dev.yaml                           # local Agentic service ports
 ├── .env.example                       # copy to .env
 ├── mcp-config.example.json            # copy to ignored local MCP config
 ├── mcp-secret-metadata.json           # secret TTL used with Atlas CLI
 ├── skills/                            # vendored MongoDB Agent Skills
 └── src/agent_atlas_explorer/
-    ├── main.ts                        # Magenta App entrypoint
+    ├── main.ts                        # Agent Engine App entrypoint
+    ├── index.ts                       # re-exports library helpers and main.ts
     └── config.ts                      # non-secret LLM, agent name, and custom instructions
 ```
 
@@ -27,12 +29,17 @@ Project memory settings live in the repository root
 [`project-config.yaml`](../../project-config.yaml). The root
 [`agent.yaml`](../../agent.yaml) registers this workspace as
 `atlas-explorer`. Run `agentengine` commands from this directory, or from
-the repository root with `--workspace atlas-explorer`.
+the repository root with `--workspace atlas-explorer`. The root
+[`.agentengineignore`](../../.agentengineignore) lists what `agentengine build`
+leaves out of the uploaded source.
 
 Policy, prompts, LLM selection, and middleware live in
 [`@repo/atlas-explorer-agent`](../../packages/atlas-explorer-agent).
 `pnpm build` bundles that library into `dist/agent_atlas_explorer/main.js`
-so Agent Engine runs one file plus this app's npm dependencies.
+so Agent Engine runs one file plus this app's npm dependencies. The `build`,
+`test`, `typecheck`, and `dev` scripts first build that library (and
+`@repo/agent-engine-core` under it) through `pre*` hooks. See the
+[package README](../../packages/atlas-explorer-agent/README.md) for its exports.
 
 ## Configure
 
@@ -70,8 +77,8 @@ environment is intentionally write-capable.
 
 Copy `mcp-config.example.json` to ignored `mcp-config.json`. Replace
 `YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4 (`curl -4 ifconfig.me`).
-Keep the Magenta egress addresses from the example so a deployed workspace can
-call Managed MCP.
+Replace the `AGENT_ENGINE_IP_*` placeholders with your Agent Engine deployment's
+egress addresses so a deployed workspace can call Managed MCP.
 
 Create a **separate MCP configuration and token per environment** (local
 development, staging, production, and so on). Do not share credentials across
@@ -80,7 +87,7 @@ pattern from `mcp-config.example.json` (for example,
 `atlas-explorer-local` or `atlas-explorer-prod`), then run
 `createGroupMcpConfig` and `createGroupMcpSecret` for each environment and
 store the resulting client ID and secret only in that environment's `.env` or
-Magenta secret store.
+Agent Engine secret store.
 
 Requires Atlas CLI 1.58 or later. Log in, then create the config against the
 target project (`groupId` is the Atlas project ID):
@@ -114,7 +121,7 @@ secret as `ATLAS_MCP_CLIENT_SECRET`. After swapping credentials, restart
 `agentengine dev` and start a new Playground thread so the runtime does not reuse a
 cached token or an old cluster connection.
 
-For a deployed workspace, store the same values in Magenta's secret store:
+For a deployed workspace, store the same values in Agent Engine's secret store:
 
 ```bash
 agentengine secret set ATLAS_MCP_CLIENT_ID
@@ -150,15 +157,14 @@ The MCP configuration is provisioned once in Atlas, scoped to one project:
 1. The operator creates a group MCP config with `createGroupMcpConfig`,
    assigning least-privilege roles there. `createGroupMcpSecret` then mints a
    secret that inherits those roles. Store the client ID and secret in `.env`
-   or Magenta's secret store.
+   or Agent Engine's secret store.
 2. AER and Tool Pod processes exchange those credentials for short-lived OAuth
    access tokens.
 3. AER discovers MCP tools from `agent.yaml`; Tool Pods execute subsequent MCP
    calls.
 
 Rotate the client secret in Atlas, update the local or deployed secret, verify
-the agent, and then revoke the previous secret. After migrating, remove unused
-`atlas-explorer-*` configurations created by the old per-process bootstrap.
+the agent, and then revoke the previous secret.
 
 ## Run locally
 
@@ -176,7 +182,7 @@ Open the playground at http://localhost:3000. Stop the stack with
 ## Talk from chat platforms
 
 The sibling [`@AtlasExplorer` Chat SDK integration](../../apps/atlas-explorer-slack-bot) invokes
-this same Magenta workspace and preserves Agentic sessions per platform thread.
+this same Agent Engine workspace and preserves Agentic sessions per platform thread.
 Its current Slack adapter supports local Socket Mode, Vercel deployment, and
 Approve/Reject controls for this agent's mutation interrupts; shared handlers
 can be reused with additional Chat SDK adapters.
@@ -198,10 +204,10 @@ can be reused with additional Chat SDK adapters.
   `GROUP_DATA_ACCESS_READ_ONLY`, and `ALLOW_WRITE_OPERATIONS` should stay
   unset or `"false"`. The application also hides non-read MongoDB MCP tools
   unless that secret is enabled; remaining tools then require HITL
-  approval. This application allowlist is a bridge until Magenta preserves
+  approval. This application allowlist is a bridge until Agent Engine preserves
   MCP tool annotations.
 - When both write opt-ins are present, persistent mutations are protected by
-  LangChain HITL middleware using Magenta's persistent checkpointer and
+  LangChain HITL middleware using Agent Engine's persistent checkpointer and
   suspend/resume adapter. This includes database writes; Atlas cluster
   creation, upgrades, and pause/resume; sample dataset loads; project,
   database-user, and access-list creation; and Atlas Streams build,
@@ -210,7 +216,7 @@ can be reused with additional Chat SDK adapters.
   explicitly forbidden from using `$out` or `$merge` write stages because HITL
   is applied at tool granularity. A read-only Atlas credential is the hard
   boundary for those argument-dependent writes.
-- Deep-agent file operations stay on Magenta's audited Tool Pod backend, but
+- Deep-agent file operations stay on Agent Engine's audited Tool Pod backend, but
   the model is not given general-purpose shell execution that could read
   process credential files outside the filesystem sandbox.
 - MCP validation and query errors are returned to the model so it can correct
@@ -218,8 +224,3 @@ can be reused with additional Chat SDK adapters.
 - OpenAI Responses tool definitions echoed in `response_metadata` are removed
   from prior messages before model calls and from new responses before
   checkpointing, keeping durable sessions compact.
-- The Magenta SDK dependencies are pinned to one tested commit in both
-  `package.json` and `pnpm-workspace.yaml`.
-- Zod is pinned to `4.4.3`; newer `4.5.x` releases currently break Magenta's
-  content-block discriminator while messages cross the AER/Tool Pod boundary.
-- Do not edit `.agentengine/`; it is generated by the agentengine CLI.
