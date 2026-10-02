@@ -1,34 +1,28 @@
-# MongoDB Agentic Platform Agent Templates
+# MongoDB Agent Engine agents
 
-Templates for MongoDB Agentic Platform agents.
+A monorepo of MongoDB and Atlas agents that run on Agent Engine, plus the
+libraries and chat clients that go with them. It is not a template repository.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, scripts, and CI.
 
-This repository contains reusable starting points for building agents that work
-with MongoDB and MongoDB Atlas. Each template is self-contained and includes its
-own setup and deployment instructions.
+## Agents and apps
 
-## Templates
+- [`agents/atlas-explorer`](agents/atlas-explorer/README.md): the Atlas
+  Explorer agent, for exploring MongoDB data and managing Atlas resources.
+- [`apps/atlas-explorer-slack-bot`](apps/atlas-explorer-slack-bot/README.md):
+  the `@AtlasExplorer` Slack client, for local Socket Mode or Vercel.
 
-- [Atlas Explorer](agents/atlas-explorer) — An operations agent
-  for exploring MongoDB data and managing Atlas resources.
-  - [Talk to Atlas Explorer from Slack](apps/atlas-explorer-slack-bot) — Run the
-    `@AtlasExplorer` Slack client locally with Socket Mode or deploy it to
-    Vercel.
+## Packages
 
-## Agent Engine layout
+- [`packages/agent-engine-core`](packages/agent-engine-core/README.md): the
+  shared agent runtime.
+- [`packages/atlas-explorer-agent`](packages/atlas-explorer-agent/README.md):
+  Atlas Explorer's tool policy and prompts.
+- [`packages/query-analysis-agent`](packages/query-analysis-agent/README.md):
+  the Query Analysis agent's tool policy.
+- [`packages/agent-engine-chat`](packages/agent-engine-chat/README.md): the
+  Chat SDK client library for Agent Engine agents.
 
-The root [`agent.yaml`](agent.yaml) registers each Agent Engine workspace.
-Atlas Explorer lives in `agents/atlas-explorer`. Project memory settings are
-in [`project-config.yaml`](project-config.yaml) next to that manifest.
+## Scripts
 
-From the repository root:
-
-```bash
-agentengine dev up --workspace atlas-explorer
-```
-
-From `agents/atlas-explorer`, `agentengine dev up` uses the same project config.
-
-## Getting Started
-
-Choose a template and follow its README for configuration, local development,
-and deployment.
+- [`scripts/seed-pa-slow-queries`](scripts/seed-pa-slow-queries/README.md):
+  loads slow-query data into an Atlas cluster for Performance Advisor.
