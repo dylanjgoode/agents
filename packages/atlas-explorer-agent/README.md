@@ -1,13 +1,29 @@
 # @repo/atlas-explorer-agent
 
-Private library for Atlas Explorer's agent behavior: the read-only tool
-allowlist, prompts, and the Atlas Explorer wrappers around shared middleware.
+Private library for Atlas Explorer's agent behavior. The deployable app lives
+in [`agents/atlas-explorer`](../../agents/atlas-explorer).
 
-Shared LLM selection, checkpoints, and LangGraph middleware live in
-[`@repo/agent-engine-core`](../agent-engine-core). This package re-exports
-that runtime so existing Atlas Explorer imports stay stable.
+## What's in it
 
-The deployable Atlas Agent Engine app in [`agents/atlas-explorer`](../../agents/atlas-explorer)
-keeps `agent.yaml`, skills, `config.ts`, and the `App` entrypoint. It imports
-this package and bundles it into `dist` so Agent Engine does not need the
-workspace package at runtime.
+- **Tool policy.** The read-only Atlas MCP allowlist, which tools are exposed,
+  and which tools need approval. Writes stay off unless
+  `ALLOW_WRITE_OPERATIONS` is set to something other than empty or `false`.
+- **System prompts.** Read-only and write-enabled prompts, with an optional
+  agent name and custom instructions.
+- **Shared runtime.** Re-exports from
+  [`@repo/agent-engine-core`](../agent-engine-core): LLM selection, agent
+  input, requester metadata, resume handling, and LangGraph middleware.
+
+## Install, build, and test
+
+From the repository root, with Node.js 24 or newer:
+
+```bash
+pnpm install
+pnpm --filter @repo/atlas-explorer-agent build
+pnpm --filter @repo/atlas-explorer-agent test
+```
+
+`build` and `test` build `@repo/agent-engine-core` first. `typecheck`
+type-checks sources and tests without emitting files. `test:watch` runs the
+tests in watch mode.
