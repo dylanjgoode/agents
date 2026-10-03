@@ -1,81 +1,56 @@
-# Contributing
+# Contributing to MongoDB Agents
 
-## Prerequisites
+This repository is a pnpm monorepo of MongoDB agents that run on
+[Atlas Agent Engine](https://www.mongodb.com/docs/agentengine/), plus the
+shared libraries and chat clients that go with them.
 
-- [pnpm](https://pnpm.io) 11.25.0, as pinned by `packageManager` in
-  `package.json`. `corepack enable` provides it.
-- Node.js 24 or newer for `agents/atlas-explorer`, `@repo/agent-engine-core`,
-  `@repo/atlas-explorer-agent`, and `@repo/query-analysis-agent`. The Slack bot
-  declares Node 22.x (Vercel reads that), and `@repo/agent-engine-chat` and the
-  repository root accept 22 or newer. pnpm warns when a package's range is not
-  met. CI uses Node 24 for everything.
-- The `agentengine` CLI and Docker, to run an agent locally with
-  `agentengine dev up` or to build and deploy it. The Cloud Agent
-  [install script](.cursor/install.sh) shows how the CLI is installed.
+To report a bug or suggest an agent,
+[open an issue](https://github.com/mongodb/agents/issues).
 
-## Install
+## Repository layout
+
+| Path | What it is |
+| --- | --- |
+| [`agents/`](agents) | Deployable agents, one workspace each, such as `atlas-explorer` and `query-analysis` (Atlas Query Insights). |
+| [`apps/`](apps) | Chat clients, such as the example Slack bot. |
+| [`packages/`](packages) | Shared libraries. Each agent's prompts, tool policy, and middleware live in its own package, built on `@repo/agent-engine-core`. |
+| [`scripts/`](scripts) | Helper scripts, such as a seeder that creates slow queries for Performance Advisor. |
+| [`agent.yaml`](agent.yaml) | Registers each agent workspace with Agent Engine. |
+
+Apps import each library's compiled `dist` folder. The `test`, `build`, and
+`typecheck` scripts build the libraries first. If you run `vitest` or `tsc`
+directly, build the libraries yourself first.
+
+## Set up
+
+You need:
+
+- Node.js 24 or later (the Slack bot targets Node.js 22)
+- pnpm. Run `corepack enable` to get the version pinned in `package.json`.
+- The [`agentengine` CLI](https://www.mongodb.com/docs/agentengine/build/install-authenticate/)
+  and Docker, to run or deploy an agent
+
+Then install and run the tests:
 
 ```bash
 corepack enable
 pnpm install
+pnpm test:atlas-explorer
 ```
 
-## Scripts
-
-Run these from the repository root.
-
-| Script | Covers |
-| --- | --- |
-| `pnpm test:atlas-explorer` | `@repo/agent-engine-core`, `@repo/atlas-explorer-agent`, `atlas-explorer` |
-| `pnpm test:slack-bot` | `@repo/agent-engine-chat`, `@repo/atlas-explorer-slack-bot` |
-| `pnpm test:query-analysis` | `@repo/query-analysis-agent` |
-| `pnpm build:atlas-explorer` | `atlas-explorer` and the packages it depends on |
-| `pnpm build:slack-bot` | `@repo/atlas-explorer-slack-bot` and the packages it depends on |
-
-Each package also has `test` and `typecheck` scripts, run with
+Each agent has `pnpm test:<agent>` and `pnpm build:<agent>` scripts at the
+repository root, such as `pnpm test:query-analysis`. Each package also has its
+own `test` and `typecheck` scripts. Run them with
 `pnpm --filter <package> <script>`.
 
-The libraries are consumed from their compiled `dist` folders, so a consumer's
-`pre*` scripts build them first. If you run `vitest` or `tsc` directly, build
-the libraries yourself.
-
-To run an agent locally from the repository root, pass its name from the root
-`agent.yaml`:
-
-```bash
-agentengine dev up --workspace atlas-explorer
-```
-
-## Repository configuration
-
-- `agent.yaml` registers each Agent Engine workspace under `agents/`.
-- `project-config.yaml` holds project-level Agent Engine settings, currently
-  memory.
-- `.agentengineignore` lists what `agentengine build` leaves out of the
-  uploaded source.
-- `tsconfig.base.json`, `tsconfig.test.base.json`, and `vitest.shared.mts` are
-  the shared TypeScript and Vitest settings that packages extend.
-- `.agents/skills` holds coding-agent skills for this repository, including the
-  Agent Engine skills that the `agentengine` CLI installs.
-
-## Continuous integration
-
-Two workflows in [`.github/workflows`](.github/workflows) run unit tests on
-pull requests and on pushes to `main`, when files they cover change:
-
-- `unit-tests-agents.yml`: one job each for `@repo/agent-engine-core`,
-  `@repo/atlas-explorer-agent`, `atlas-explorer`, and
-  `@repo/query-analysis-agent`.
-- `unit-tests-slack-bot.yml`: one job each for `@repo/agent-engine-chat` and
-  `@repo/atlas-explorer-slack-bot`.
-
-Both use the shared [`unit-test`](.github/actions/unit-test/action.yml) action,
-which installs with `pnpm install --frozen-lockfile` and runs the package's
-test script. CI does not run typecheck or build, so run those yourself before
-opening a pull request.
+To run an agent locally, run `agentengine dev up` from its directory, or from
+the repository root with `--workspace <name>`. For configuration, see the
+agent's README.
 
 ## Pull requests
 
-Fill in the [pull request template](.github/pull_request_template.md): a Jira
-link, the changes, and any notes. [`CODEOWNERS`](.github/CODEOWNERS) assigns
-reviewers.
+- Fill in the [pull request template](.github/pull_request_template.md).
+- Keep each pull request focused on one change.
+- CI runs unit tests only. Run `typecheck` and `build` locally before you open
+  a pull request.
+- Don't edit `.agentengine/`. The `agentengine` CLI generates it.

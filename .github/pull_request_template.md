@@ -1,5 +1,3 @@
-Jira: https://jira.mongodb.org/browse/EAI-
-
 ## Changes
 
 -
@@ -8,3 +6,7 @@ Jira: https://jira.mongodb.org/browse/EAI-
 ## Notes
 
 -
+
+## Checklist
+
+- [ ] Tests, `typecheck`, and `build` pass locally for the packages I changed
