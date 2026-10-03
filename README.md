@@ -3,14 +3,14 @@
 Agent templates for MongoDB Atlas that you can deploy to
 [Atlas Agent Engine](https://www.mongodb.com/docs/agentengine/).
 
-An agent for routine database work needs more than a prompt. It also needs
-credentials, access scoping, tool orchestration, approval flows, and
-somewhere reliable to run. Each template in this repository already includes
-those pieces. It combines the
+Each template already includes what an Atlas agent needs beyond a prompt:
+credentials, access scoping, tool orchestration, and approval flows. The
+templates are built on the
 [MongoDB MCP Server](https://www.mongodb.com/docs/mcp-server/) and
-[MongoDB Agent Skills](https://www.mongodb.com/docs/agent-skills) with the orchestration
-for a specific Atlas workflow. You bring a model API key, set the agent's
-scope, and deploy it to Atlas Agent Engine.
+[MongoDB Agent Skills](https://www.mongodb.com/docs/agent-skills). You bring a
+model API key, choose what the agent can access, and deploy it.
+
+![From template to running agent: pick a template from mongodb/agents, set your Atlas credential, model, and agent.yaml, deploy with the agentengine CLI, and run on Atlas Agent Engine, which connects to Atlas and to the Playground, CLI, and Slack.](docs/images/architecture.svg)
 
 > [!NOTE]
 > Atlas Agent Engine is in Public Preview. Review the
@@ -21,69 +21,18 @@ scope, and deploy it to Atlas Agent Engine.
 
 | Agent | What it does | Status |
 | --- | --- | --- |
-| [Atlas Explorer](agents/atlas-explorer) | A conversational agent for questions and everyday workflows across your Atlas environment, such as clusters, alerts, schemas, and data. | Available |
-| [Atlas Query Insights](agents/query-analysis) | A workflow agent that produces a slow-query report for an Atlas cluster, based on Performance Advisor. | Available |
-
-Each agent has its own README with full configuration and deployment steps.
-
-### Atlas Query Insights
-
-Atlas Query Insights explains which slow queries on a cluster matter most and
-what to look at next. It's read-only by design. Unlike Atlas Explorer, it has
-no option to enable writes. It can recommend an index, but it can't create
-one.
-
-1. It pulls slow query logs and suggested indexes from
-   [Performance Advisor](https://www.mongodb.com/docs/atlas/performance-advisor/)
-   for one cluster.
-2. It groups the logs into query shapes and ranks them by documents examined,
-   then working time, then execution count.
-3. It reports on the top three shapes. You can change that number in its
-   `config.ts`. Each shape gets a plain-language overview and up to two areas
-   worth investigating, usually with a link to the MongoDB docs. When
-   Performance Advisor suggests an index for a shape, that suggestion comes
-   first.
-
-Things to know:
-
-- It only names index fields that Performance Advisor suggested.
-- The report is based on a sample of at most 50 recent slow query logs, not
-  on every execution of a query over time.
-- Give its Atlas credential read-only roles. The agent can run aggregation
-  pipelines, and a read-write credential would let `$out` or `$merge` stages
-  write data.
-- Performance Advisor requires an M10 or larger cluster.
-- You can pin the agent to one project and cluster in its `config.ts`.
-
-## Why Atlas Agent Engine
-
-Atlas Agent Engine is the managed runtime for these agents. It handles
-the infrastructure you would otherwise build and maintain yourself:
-
-| Capability | How the templates use it |
-| --- | --- |
-| [Secrets management](https://www.mongodb.com/docs/agentengine/deploy/provision-secrets/) | Atlas MCP credentials and model API keys are stored as platform secrets. You declare their names in `agent.yaml`, and the values never live in your code. |
-| Sandboxed execution | The agent and its tools run in separate sandboxes. Model calls and MCP tool calls run in the tool sandbox, and `agent.yaml` declares the secrets each one needs. |
-| [Network egress policies](https://www.mongodb.com/docs/agentengine/network-egress/) | Outbound traffic is blocked by default. Each sandbox can reach only the hosts that `agent.yaml` allows for it, such as Atlas and your model provider. |
-| Durable sessions | Agent Engine checkpoints each session. An agent can pause for a human decision and then resume where it left off. |
-| [Execution traces](https://www.mongodb.com/docs/agentengine/manage/inspect-traces/) and [monitoring](https://www.mongodb.com/docs/agentengine/manage/monitor/) | You can inspect each run's model calls, tool calls, and errors. |
-| [Playground](https://www.mongodb.com/docs/agentengine/deploy/test/) | You can test an agent locally before you deploy it. |
-| [Service accounts](https://www.mongodb.com/docs/agentengine/api-keys-service-accounts/) | Other apps, such as the Slack bot example, can call a deployed agent. |
-
-Agent Engine also offers
-[agent memory](https://www.mongodb.com/docs/agentengine/add-features/memory-types/),
-a [policy engine](https://www.mongodb.com/docs/agentengine/manage/governance/policy-engine/),
-and more. See the [Agent Engine documentation](https://www.mongodb.com/docs/agentengine/)
-for the full list.
+| [Atlas Explorer](#atlas-explorer) | A conversational agent for questions and everyday workflows across your Atlas environment, such as clusters, alerts, schemas, and data. | Available |
+| [Atlas Query Insights](#atlas-query-insights) | A workflow agent that produces a slow-query report for an Atlas cluster, based on Performance Advisor. | Available |
 
 ## Get started
 
-These steps deploy Atlas Explorer. The
-[Atlas Explorer README](agents/atlas-explorer) covers each one in detail.
-Atlas Query Insights follows the same steps from `agents/query-analysis`. See
-its [README](agents/query-analysis) for details.
+These steps deploy Atlas Explorer. Atlas Query Insights follows the same steps
+from `agents/query-analysis`. Each agent's README covers every step in detail:
+[Atlas Explorer](agents/atlas-explorer),
+[Atlas Query Insights](agents/query-analysis).
 
-### Prerequisites
+<details>
+<summary><strong>Prerequisites</strong></summary>
 
 - An Atlas account and a project that holds the data you want to explore
 - The [`agentengine` CLI](https://www.mongodb.com/docs/agentengine/build/install-authenticate/),
@@ -92,6 +41,8 @@ its [README](agents/query-analysis) for details.
 - Node.js 24 or later, and [pnpm](https://pnpm.io/)
 - Docker, to run the agent locally
 - An API key for your model provider
+
+</details>
 
 ### 1. Clone and install
 
@@ -138,27 +89,100 @@ agentengine deploy
 Then call the deployed agent:
 
 ```bash
-agentengine invoke "Which of my clusters have alerts?"
+agentengine invoke "List the databases in my cluster and their sizes."
 ```
 
 To learn more, see
 [Deploy your build](https://www.mongodb.com/docs/agentengine/deploy/deploy-build/)
 and the [`agentengine` CLI reference](https://www.mongodb.com/docs/agentengine/cli/agentengine/).
 
-## Safe by default
+## The agents
 
-Agents that can see production data need clear limits. The templates set
-those limits from the start.
+### Atlas Explorer
 
-- **Read-only by default.** Agents connect to Atlas with their own
-  programmatic identity, and you choose its roles. The example configuration
-  grants read-only access to one Atlas project.
-- **Two opt-ins to enable writes.** To make writes possible, you must
-  provision a write-capable Atlas identity *and* set
-  `ALLOW_WRITE_OPERATIONS`. If either one stays read-only, the agent cannot
-  write.
+Atlas Explorer answers questions about your Atlas environment and helps with
+everyday Atlas tasks. It connects to Atlas through the MongoDB MCP Server. When
+it needs specialist guidance, such as query optimization or schema design, it
+loads the matching MongoDB Agent Skill.
+
+Try asking:
+
+- "What does the schema of the `orders` collection look like?"
+- "Why is this query slow, and what index would help?"
+- "How many orders have no shipping address?"
+
+How writes work:
+
+- **Read-only by default.** The example Atlas credential has read-only roles,
+  and the agent hides tools that change data or Atlas resources.
+- **Two opt-ins to enable writes.** To make writes possible, you must give the
+  agent a write-capable Atlas credential *and* set `ALLOW_WRITE_OPERATIONS`.
+  If either one stays read-only, the agent can't write.
 - **Human approval for every write.** When writes are enabled, any action that
-  changes a database or an Atlas configuration pauses for explicit approval.
+  changes data or Atlas resources pauses for your approval. Examples include
+  creating an index, inserting documents, or creating or pausing a cluster.
+
+### Atlas Query Insights
+
+Atlas Query Insights explains which slow queries on a cluster matter most and
+what to look at next. It's read-only by design. Unlike Atlas Explorer, it has
+no option to enable writes. It can recommend an index, but it can't create
+one.
+
+1. It pulls slow query logs and suggested indexes from
+   [Performance Advisor](https://www.mongodb.com/docs/atlas/performance-advisor/)
+   for one cluster.
+2. It groups the logs into query shapes and ranks them by documents examined,
+   then working time, then execution count.
+3. It reports on the top three shapes. You can change that number in its
+   `config.ts`. Each shape gets a plain-language overview and up to two areas
+   worth investigating, usually with a link to the MongoDB docs. When
+   Performance Advisor suggests an index for a shape, that suggestion comes
+   first.
+
+Things to know:
+
+- It only names index fields that Performance Advisor suggested.
+- The report is based on a sample of at most 50 recent slow query logs, not
+  on every execution of a query over time.
+- Give its Atlas credential read-only roles. The agent can run aggregation
+  pipelines, and a read-write credential would let `$out` or `$merge` stages
+  write data.
+- Performance Advisor requires an M10 or larger cluster.
+- You can pin the agent to one project and cluster in its `config.ts`.
+
+### Safe by default
+
+Agents that can see production data need clear limits. Both agents set those
+limits from the start.
+
+- **Their own Atlas identity.** Each agent connects to Atlas with its own
+  programmatic identity for one Atlas project, and you choose its roles.
+- **Read-only by default.** The example configurations grant read-only
+  access. Atlas Explorer can be set up to write, with your approval for every
+  write. Atlas Query Insights can't write.
+- **No shell access.** Neither agent can run shell commands in its sandbox.
+
+## Why Atlas Agent Engine
+
+Atlas Agent Engine is the managed runtime for these agents. It handles the
+infrastructure you would otherwise build and maintain yourself:
+
+| Capability | How the templates use it |
+| --- | --- |
+| [Secrets](https://www.mongodb.com/docs/agentengine/deploy/provision-secrets/) and sandboxing | Atlas credentials and model API keys are stored as platform secrets, not in your code. Model and MCP calls run in a tool sandbox, separate from the agent. |
+| [Network egress policies](https://www.mongodb.com/docs/agentengine/network-egress/) | Outbound traffic is blocked by default. Each sandbox can reach only the hosts that `agent.yaml` allows, such as Atlas and your model provider. |
+| Durable sessions | Agent Engine checkpoints each session. An agent can pause for your approval and resume where it left off. |
+| [Traces](https://www.mongodb.com/docs/agentengine/manage/inspect-traces/) and [monitoring](https://www.mongodb.com/docs/agentengine/manage/monitor/) | You can inspect each run's model calls, tool calls, and errors. |
+
+Agent Engine also offers a local
+[Playground](https://www.mongodb.com/docs/agentengine/deploy/test/),
+[service accounts](https://www.mongodb.com/docs/agentengine/api-keys-service-accounts/)
+for calling agents from other apps,
+[agent memory](https://www.mongodb.com/docs/agentengine/add-features/memory-types/),
+a [policy engine](https://www.mongodb.com/docs/agentengine/manage/governance/policy-engine/),
+and more. See the [Agent Engine documentation](https://www.mongodb.com/docs/agentengine/)
+for the full list.
 
 ## Example: talk to Atlas Explorer from Slack
 
@@ -203,9 +227,7 @@ new agent, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Feedback
 
-Did you build something with these templates, or hit a rough edge?
-[Open an issue](https://github.com/mongodb/agents/issues). Your feedback shapes
-which agents we build next.
+[Open an issue](https://github.com/mongodb/agents/issues).
 
 ## License
 
