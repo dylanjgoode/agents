@@ -131,20 +131,24 @@ one.
 
 1. It pulls slow query logs and suggested indexes from
    [Performance Advisor](https://www.mongodb.com/docs/atlas/performance-advisor/)
-   for one cluster.
+   for one cluster. By default, it covers the last 24 hours. You can ask it to
+   start from a different date or to look at specific collections.
 2. It groups the logs into query shapes and ranks them by documents examined,
    then working time, then execution count.
-3. It reports on the top three shapes. You can change that number in its
-   `config.ts`. Each shape gets a plain-language overview and up to two areas
-   worth investigating, usually with a link to the MongoDB docs. When
-   Performance Advisor suggests an index for a shape, that suggestion comes
-   first.
+3. It reports on the top three shapes by default. You can ask for more or
+   fewer, or change the default in its `config.ts`. Each shape gets a
+   plain-language overview and up to two areas worth investigating, usually
+   with a link to the MongoDB docs. When Performance Advisor suggests an index
+   for a shape, that suggestion comes first.
 
 Things to know:
 
 - It only names index fields that Performance Advisor suggested.
-- The report is based on a sample of at most 50 recent slow query logs, not
-  on every execution of a query over time.
+- The report is based on a sample of at most 50 recent slow query logs per
+  cluster node, not on every execution of a query over time.
+- It works from redacted query shapes. The raw slow query log lines are
+  summarized and then removed before the model sees them, so the model
+  doesn't see the literal query values in those logs.
 - Give its Atlas credential read-only roles. The agent can run aggregation
   pipelines, and a read-write credential would let `$out` or `$merge` stages
   write data.
