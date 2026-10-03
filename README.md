@@ -1,6 +1,6 @@
 # MongoDB Agents
 
-Open-source agent templates for MongoDB Atlas that you deploy to
+Agent templates for MongoDB Atlas that you can deploy to
 [Atlas Agent Engine](https://www.mongodb.com/docs/agentengine/).
 
 An agent for routine database work needs more than a prompt. It also needs
@@ -8,7 +8,7 @@ credentials, access scoping, tool orchestration, approval flows, and
 somewhere reliable to run. Each template in this repository already includes
 those pieces. It combines the
 [MongoDB MCP Server](https://www.mongodb.com/docs/mcp-server/) and
-[MongoDB Agent Skills](agents/atlas-explorer/skills) with the orchestration
+[MongoDB Agent Skills](https://www.mongodb.com/docs/agent-skills) with the orchestration
 for a specific Atlas workflow. You bring a model API key, set the agent's
 scope, and deploy it to Atlas Agent Engine.
 
@@ -29,8 +29,9 @@ Each agent has its own README with full configuration and deployment steps.
 ### Atlas Query Insights
 
 Atlas Query Insights explains which slow queries on a cluster matter most and
-what to look at next. It's read-only: it can recommend an index, but it can't
-create one.
+what to look at next. It's read-only by design. Unlike Atlas Explorer, it has
+no option to enable writes. It can recommend an index, but it can't create
+one.
 
 1. It pulls slow query logs and suggested indexes from
    [Performance Advisor](https://www.mongodb.com/docs/atlas/performance-advisor/)
@@ -48,6 +49,9 @@ Things to know:
 - It only names index fields that Performance Advisor suggested.
 - The report is based on a sample of at most 50 recent slow query logs, not
   on every execution of a query over time.
+- Give its Atlas credential read-only roles. The agent can run aggregation
+  pipelines, and a read-write credential would let `$out` or `$merge` stages
+  write data.
 - Performance Advisor requires an M10 or larger cluster.
 - You can pin the agent to one project and cluster in its `config.ts`.
 
