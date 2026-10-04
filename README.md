@@ -4,7 +4,7 @@ Agent templates for MongoDB Atlas that you can deploy to
 [Atlas Agent Engine](https://www.mongodb.com/docs/agentengine/).
 
 Each template already includes what an Atlas agent needs beyond a prompt:
-credentials, access scoping, tool orchestration, and approval flows. The
+credential handling, access scoping, tool orchestration, and approval flows. The
 templates are built on the
 [MongoDB MCP Server](https://www.mongodb.com/docs/mcp-server/) and
 [MongoDB Agent Skills](https://www.mongodb.com/docs/agent-skills). You bring a
@@ -58,11 +58,15 @@ pnpm install
 
 Create an Atlas MCP configuration for one Atlas project with the Atlas CLI.
 The roles you give that configuration decide what the agent can see and do.
-The example grants read-only access. Add the client ID and secret it returns
-to `.env`, along with your model API key.
+The example grants read-only access. Before you create it, add your IP
+addresses to the access list in `mcp-config.json`. Add the client ID and
+secret it returns to `.env`, along with your model API key.
 
 Atlas Explorer uses OpenAI by default. To use Anthropic, Gemini, or Cerebras
-instead, change the provider in `src/agent_atlas_explorer/config.ts`.
+instead, change the provider and model in
+`src/agent_atlas_explorer/config.ts`. Then update `agent.yaml` with that
+provider's API key name and API host, because the agent can reach only the
+hosts that `agent.yaml` allows.
 
 ### 3. Test it locally
 
@@ -76,7 +80,8 @@ Open the Playground at http://localhost:3000 and ask a question, such as
 
 ### 4. Deploy to Atlas Agent Engine
 
-Store the same credentials as platform secrets, then build and deploy:
+Store the same credentials as platform secrets, then build and deploy. If
+you use another model provider, set its API key instead of `OPENAI_API_KEY`.
 
 ```bash
 agentengine secret set ATLAS_MCP_CLIENT_ID
@@ -117,10 +122,16 @@ How writes work:
   and the agent hides tools that change data or Atlas resources.
 - **Two opt-ins to enable writes.** To make writes possible, you must give the
   agent a write-capable Atlas credential *and* set `ALLOW_WRITE_OPERATIONS`.
-  If either one stays read-only, the agent can't write.
-- **Human approval for every write.** When writes are enabled, any action that
-  changes data or Atlas resources pauses for your approval. Examples include
-  creating an index, inserting documents, or creating or pausing a cluster.
+  Without the setting, the agent hides its write tools. A read-only credential
+  is the hard limit: with one, Atlas rejects every write.
+- **Human approval for every write tool.** When writes are enabled, any tool
+  that changes data or Atlas resources pauses for your approval. Examples
+  include creating an index, inserting documents, or creating or pausing a
+  cluster.
+- **Aggregation pipelines count as reads.** The agent is instructed never to
+  use the `$out` or `$merge` stages, which write data. Only a read-only
+  credential guarantees that, so keep the credential read-only unless you need
+  writes.
 
 ### Atlas Query Insights
 
@@ -163,8 +174,8 @@ limits from the start.
 - **Their own Atlas identity.** Each agent connects to Atlas with its own
   programmatic identity for one Atlas project, and you choose its roles.
 - **Read-only by default.** The example configurations grant read-only
-  access. Atlas Explorer can be set up to write, with your approval for every
-  write. Atlas Query Insights can't write.
+  access. Atlas Explorer can be set up to write, with your approval for each
+  write tool. Atlas Query Insights can't write.
 - **No shell access.** Neither agent can run shell commands in its sandbox.
 
 ## Why Atlas Agent Engine
@@ -215,19 +226,30 @@ You host and operate it yourself. Read these limitations before you use it:
 
 ## What to expect
 
+These templates are for teams that want to run their own agents and control
+how they're set up.
+
+- **You set it up, and you own it.** There's no setup option in the Atlas
+  UI. You choose the agent's Atlas access and model provider, then deploy it
+  to your own Agent Engine project with the `agentengine` CLI. You keep
+  control of the code, the credentials, and where the agent runs.
 - **Atlas only.** The agents depend on Atlas-hosted services such as the
   Atlas MCP Server. They don't support MongoDB Enterprise Advanced,
   on-premises deployments, or Atlas for Government.
 - **Built for Atlas Agent Engine.** You can fork the code and adapt it under
   the Apache 2.0 license. However, the deployment steps in this repository
   cover only Atlas Agent Engine and the `agentengine` CLI.
-- **You run your deployment.** These templates are starting points that you
-  deploy and operate in your own Atlas and Agent Engine projects.
+- **Slack is an optional example.** You host the Slack bot yourself. Everyone
+  on its allowlist shares one Atlas identity instead of using their own Atlas
+  permissions. For details, see
+  [Example: talk to Atlas Explorer from Slack](#example-talk-to-atlas-explorer-from-slack).
+  The bot is built on [Chat SDK](https://chat-sdk.dev), so you can adapt it to
+  other chat platforms.
 
 ## Contributing
 
-To learn about the repository layout, local development, tests, and adding a
-new agent, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To learn about the repository layout, local development, and tests, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Feedback
 
