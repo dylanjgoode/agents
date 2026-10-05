@@ -70,10 +70,11 @@ data the agent should explore. Project roles such as
 
 Assign Atlas roles on the MCP configuration itself. `createGroupMcpConfig`
 creates that identity; `createGroupMcpSecret` only mints a client secret that
-inherits the configuration's roles and read-only setting. The example config
-grants `GROUP_DATA_ACCESS_READ_ONLY`, which also inherits Project Read Only
-control-plane privileges. Keep Atlas MCP read-only mode enabled unless this
-environment is intentionally write-capable.
+inherits the configuration's roles. The configuration has no separate
+read-only switch: its roles alone decide what the agent can do in Atlas. The
+example config grants `GROUP_DATA_ACCESS_READ_ONLY`, which also inherits
+Project Read Only control-plane privileges. Keep the roles read-only unless
+this environment is intentionally write-capable.
 
 Copy `mcp-config.example.json` to ignored `mcp-config.json`. Replace
 `YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4 (`curl -4 ifconfig.me`).
@@ -129,13 +130,40 @@ agentengine secret set ATLAS_MCP_CLIENT_SECRET
 agentengine secret set OPENAI_API_KEY
 ```
 
-Writes require two independent opt-ins. Either remaining read-only is enough
-to prevent ordinary write-tool use:
+## How writes work
+
+Atlas Explorer is read-only by default. The example MCP configuration grants
+read-only roles, and the agent hides every MCP tool that isn't on its
+read-only allowlist (`READ_ONLY_MCP_TOOLS` in
+[`agentPolicy.ts`](../../packages/atlas-explorer-agent/src/agentPolicy.ts)).
+
+Writes require two independent opt-ins. Either one remaining read-only is
+enough to prevent ordinary write-tool use:
 
 1. Provision a write-capable MCP configuration with only the Atlas roles the
-   environment needs, such as `GROUP_DATA_ACCESS_READ_WRITE`.
-2. Set `ALLOW_WRITE_OPERATIONS` to a non-empty value other than `"false"`
-   locally or with `agentengine secret set ALLOW_WRITE_OPERATIONS`.
+   environment needs, such as `GROUP_DATA_ACCESS_READ_WRITE`. A read-only
+   credential is the hard limit: Atlas rejects writes made with it.
+2. Set `ALLOW_WRITE_OPERATIONS` to a non-empty value other than `"false"`.
+   Locally, set it in `.env`. For a deployed workspace, add
+   `ALLOW_WRITE_OPERATIONS` under `required_secrets.aer` in `agent.yaml`,
+   then run `agentengine secret set ALLOW_WRITE_OPERATIONS`. The checked-in
+   manifest doesn't declare it, so a deployed agent stays read-only until you
+   add it.
+
+When writes are enabled, every MCP tool that isn't on the read-only allowlist
+is exposed, and each one pauses for approval before it runs. That includes
+tools the allowlist doesn't recognize, such as tools added to Atlas MCP
+later, and `export`. You can approve, edit, or reject each call. The
+[Slack bot](../../apps/atlas-explorer-slack-bot) offers only Approve and
+Reject.
+
+Approval is per tool, not per argument, so `aggregate` and `aggregate_db`
+stay unapproved reads. The system prompt tells the agent never to use the
+`$out` or `$merge` stages, which write data. Only a read-only credential
+guarantees that, so keep the credential read-only unless the environment
+needs writes.
+
+## Model and persona
 
 The application selects OpenAI `gpt-6-luna` in `config.ts`. To use another
 provider, model, or custom-compatible endpoint, update that file together with
@@ -201,7 +229,7 @@ can be reused with additional Chat SDK adapters.
 - Ask it to drop a collection. With the default read-only MCP identity and
   unset `ALLOW_WRITE_OPERATIONS`, the agent cannot execute that mutation. After
   both write opt-ins are set, the graph suspends before the MCP call and
-  resumes only after an approve/edit/reject/respond decision.
+  resumes only after an approve, edit, or reject decision.
 
 ## Safety and runtime notes
 

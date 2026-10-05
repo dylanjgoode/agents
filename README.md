@@ -116,55 +116,19 @@ Try asking:
 - "Why is this query slow, and what index would help?"
 - "How many orders have no shipping address?"
 
-How writes work:
-
-- **Read-only by default.** The example Atlas credential has read-only roles,
-  and the agent hides tools that change data or Atlas resources.
-- **Two opt-ins to enable writes.** To make writes possible, you must give the
-  agent a write-capable Atlas credential *and* set `ALLOW_WRITE_OPERATIONS`.
-  Without the setting, the agent hides its write tools. A read-only credential
-  is the hard limit: with one, Atlas rejects every write.
-- **Human approval for every write tool.** When writes are enabled, any tool
-  that changes data or Atlas resources pauses for your approval. Examples
-  include creating an index, inserting documents, or creating or pausing a
-  cluster.
-- **Aggregation pipelines count as reads.** The agent is instructed never to
-  use the `$out` or `$merge` stages, which write data. Only a read-only
-  credential guarantees that, so keep the credential read-only unless you need
-  writes.
+See the [Atlas Explorer README](agents/atlas-explorer) for setup and configuration details.
 
 ### Atlas Query Insights
 
 Atlas Query Insights explains which slow queries on a cluster matter most and
-what to look at next. It's read-only by design. Unlike Atlas Explorer, it has
-no option to enable writes. It can recommend an index, but it can't create
-one.
+what to look at next. It reads slow query logs and index suggestions from
+[Performance Advisor](https://www.mongodb.com/docs/atlas/performance-advisor/),
+then reports on the highest-impact query shapes. It's read-only by design. It
+can recommend an index, but it can't create one. Performance Advisor requires
+an M10 or larger cluster.
 
-1. It pulls slow query logs and suggested indexes from
-   [Performance Advisor](https://www.mongodb.com/docs/atlas/performance-advisor/)
-   for one cluster. By default, it covers the last 24 hours. You can ask it to
-   start from a different date or to look at specific collections.
-2. It groups the logs into query shapes and ranks them by documents examined,
-   then working time, then execution count.
-3. It reports on the top three shapes by default. You can ask for more or
-   fewer, or change the default in its `config.ts`. Each shape gets a
-   plain-language overview and up to two areas worth investigating, usually
-   with a link to the MongoDB docs. When Performance Advisor suggests an index
-   for a shape, that suggestion comes first.
-
-Things to know:
-
-- It only names index fields that Performance Advisor suggested.
-- The report is based on a sample of at most 50 recent slow query logs per
-  cluster node, not on every execution of a query over time.
-- It works from redacted query shapes. The raw slow query log lines are
-  summarized and then removed before the model sees them, so the model
-  doesn't see the literal query values in those logs.
-- Give its Atlas credential read-only roles. The agent can run aggregation
-  pipelines, and a read-write credential would let `$out` or `$merge` stages
-  write data.
-- Performance Advisor requires an M10 or larger cluster.
-- You can pin the agent to one project and cluster in its `config.ts`.
+For how the report is built, what it's based on, and how to configure it, see
+the [Atlas Query Insights README](agents/query-analysis).
 
 ### Safe by default
 
@@ -220,9 +184,8 @@ You host and operate it yourself. Read these limitations before you use it:
   reach. Give that identity only the roles every allowlisted user should
   have.
 - Only the user who requested a write can approve or reject it.
-- Each run records which Slack user made the request.
-- The bot needs its own host and its own MongoDB database to store thread
-  state.
+- When deployed, the bot needs its own host and its own MongoDB database to
+  store thread state. Run locally, it can start a temporary database instead.
 
 ## What to expect
 

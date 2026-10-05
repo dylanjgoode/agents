@@ -1,11 +1,11 @@
-# AtlasExplorer Chat Bot
+# Atlas Explorer Slack bot
 
 `@AtlasExplorer` is a [Vercel Chat SDK](https://chat-sdk.dev) client for the
-existing [Atlas Explorer agent on Agent Engine](../../agents/atlas-explorer). Shared
+[Atlas Explorer agent on Agent Engine](../../agents/atlas-explorer). Shared
 handlers contain the conversation, delivery, and human-review behavior; the
 official `@chat-adapter/slack` package contains Slack transport behavior. This
 keeps the core ready for another Chat SDK adapter without duplicating the
-Agentic workflow.
+Agent Engine workflow.
 
 Conversation handling, Slack mention filtering (`slackMentions`), the Agent
 Engine client, and thread storage live in
@@ -15,18 +15,33 @@ copy.
 
 The bot does not run LangGraph, MCP, or Atlas credentials. It sends normalized
 chat messages to the Agent Engine invocation API, maps Chat SDK threads to
-Agentic sessions, and presents portable Approve/Reject cards when Atlas
+Agent Engine sessions, and presents portable Approve/Reject cards when Atlas
 Explorer suspends for human review.
 
-The initial integration uses the Agent Engine workspace's shared Atlas MCP identity.
-Every allowlisted Slack user therefore has the same Atlas access as that
-workspace; access is not scoped to each user's Atlas identity.
+## Before you use this
+
+This bot is an example to learn from and adapt, not a managed Slack app. You
+host and operate it yourself.
+
+- **One shared Atlas identity.** The bot calls the Atlas Explorer workspace,
+  which connects to Atlas with that workspace's MCP credentials. Every
+  allowlisted Slack user has the same Atlas access. Access isn't scoped to
+  each user's own Atlas permissions, so give the MCP configuration only the
+  roles every allowlisted user should have.
+- **An allowlist is required.** The bot won't start without
+  `CHAT_ALLOWED_USER_IDS`.
+- **Only the requester can approve.** When Atlas Explorer pauses a write for
+  review, only the Slack user who asked for it can approve or reject it.
+- **Each run records who asked.** The bot sends the Slack user's ID,
+  username, and display name with each request. Atlas Explorer stores them
+  as `metadata.requester` on the session's checkpoints. On a resume, that
+  field records the user who approved or rejected the write.
 
 ## Prerequisites
 
 - Node.js 22 and pnpm
 - A Slack workspace where you can create and install an app
-- Either a deployed Atlas Explorer workspace and project-scoped Agentic
+- Either a deployed Atlas Explorer workspace and project-scoped Agent Engine
   service-account credentials, or a local Atlas Explorer `agentengine dev` stack
 - MongoDB 5.0+ in production for Chat SDK state, durable workflow state, and
   partial TTL retention indexes. Local Socket Mode can start an ephemeral
@@ -75,7 +90,7 @@ and deploy to Vercel so Socket Mode and the hosted webhook never share tokens.
    Socket Mode.
 3. Install the app to the workspace and copy its **Bot User OAuth Token** as
    `SLACK_BOT_TOKEN`.
-4. Copy `.env.example` to `.env` and set the Slack and Agentic target values
+4. Copy `.env.example` to `.env` and set the Slack and Agent Engine target values
    for the app you just created. Set `CHAT_ALLOWED_USER_IDS` to
    comma-separated, platform-qualified IDs such as `slack:U0123456789` for
    trusted operators (copy each member ID from the Slack profile menu).
@@ -134,7 +149,7 @@ the app's other scripts have similar `pre*` hooks.
 
 `MONGODB_URI` is optional locally. Without it,
 `mongodb-memory-server-core` starts an ephemeral MongoDB process. Chat SDK
-subscriptions, locks, deduplication, queues, and Agentic workflow records all
+subscriptions, locks, deduplication, queues, and Agent Engine workflow records all
 use the same production MongoDB implementations. The embedded database stops
 and its data disappears during graceful shutdown. You can then:
 
@@ -205,33 +220,28 @@ AGENTIC_WORKSPACE_ID=
 
 Start the bot with `pnpm start`. The client calls the Playground's
 `/invoke/stream` proxy on port 3000, which injects the local workspace scope
-before forwarding to OE. Agent Engine tool progress updates the transient Slack
-thread status; streamed model text is collected and posted once as the durable
-final response. Do not point the client directly at OE port 8000 because the
+before forwarding to the Orchestration Engine (OE). Agent Engine tool progress
+updates the transient Slack thread status; streamed model text is collected
+and posted once as the durable final response. Do not point the client
+directly at OE port 8000 because the
 client relies on the Playground proxy to inject that scope. Atlas MCP
 credentials come from the agent's local `.env`.
 
 ## Deploy to Vercel
 
-This development bot uses the Vercel Production target only so the project
-gets one stable `*.vercel.app` domain. Its Slack, Agentic, and MongoDB values
-are still development credentials and data.
+The bot deploys to the Vercel Production target so the project gets one
+stable `*.vercel.app` domain for the Slack webhook. The webhook function is
+`/api/webhooks/slack`, runs in `iad1`, and has a 300-second maximum duration.
 
-The current hosted development deployment is:
-
-- Vercel project: `mongodb-team/atlas-explorer`
-- Stable domain: `https://atlas-explorer-three.vercel.app`
-- Slack webhook:
-  `https://atlas-explorer-three.vercel.app/api/webhooks/slack`
-- Function: `/api/webhooks/slack` in `iad1`, with a 300-second maximum
-
-Set the deployment coordinates once before running the commands below:
+Set your deployment coordinates once before running the commands below:
 
 ```bash
-export VERCEL_SCOPE=mongodb-team
-export VERCEL_PROJECT=atlas-explorer
-export VERCEL_URL=https://atlas-explorer-three.vercel.app
+export VERCEL_SCOPE=<your-vercel-team>
+export VERCEL_PROJECT=<your-vercel-project>
+export VERCEL_URL=https://<your-project-domain>.vercel.app
 ```
+
+Your Slack webhook URL is `$VERCEL_URL/api/webhooks/slack`.
 
 1. In the Vercel project, set the Root Directory to
    `apps/atlas-explorer-slack-bot`. Vercel installs this pnpm workspace from
@@ -269,10 +279,11 @@ export VERCEL_URL=https://atlas-explorer-three.vercel.app
    `VARIABLE_NAME=` prefix. `CHAT_ALLOWED_USER_IDS` requires qualified values
    such as `slack:U0123456789`.
 
-   Use a project-scoped Agentic service account with the `AGENT_DEVELOPER`
-   role. Vercel uses dynamic outbound IPs, so do not restrict this development
-   service account to a fixed IP access list. If static Vercel egress is added
-   later, restrict the account to those addresses.
+   Use a project-scoped Agent Engine service account with the
+   `AGENT_DEVELOPER` role. Standard Vercel Functions use dynamic outbound IPs,
+   so a fixed IP access list on the service account would block them. If you
+   enable Vercel Static IPs or Secure Compute, restrict the account to those
+   addresses.
 3. Deploy to the Vercel production alias (`$VERCEL_URL`):
 
    ```bash
@@ -282,8 +293,8 @@ export VERCEL_URL=https://atlas-explorer-three.vercel.app
    That runs `vercel deploy --prod`. Confirm the deployment is ready and that Vercel automatically advances
    `$VERCEL_URL`. Do not set a separate alias.
 4. On the hosted **AtlasExplorer** app created from `manifest.json`, replace
-   every `https://example.com/api/webhooks/slack` URL with the stable webhook
-   URL above. Configure both Event Subscriptions and Interactivity &
+   every `https://example.com/api/webhooks/slack` URL with
+   `$VERCEL_URL/api/webhooks/slack`. Configure both Event Subscriptions and Interactivity &
    Shortcuts. Leave the **AtlasExplorer Local** app on Socket Mode.
 5. Disable Socket Mode on the hosted app, save the Slack app changes, and
    reinstall only if Slack requests it or OAuth scopes changed. Slack must
@@ -294,19 +305,25 @@ The thin Vercel handler passes the untouched request to
 can acknowledge Slack quickly while Agent Engine work continues. Its maximum
 duration is 300 seconds. Vercel requires `MONGODB_URI`; the embedded server can
 never start in production. One cached MongoDB client backs both Chat SDK state
-and Agentic workflow state across warm invocations.
+and Agent Engine workflow state across warm invocations.
 
 Completed inactive workflow mappings expire after 30 days, and an undelivered
 response is retained for up to 24 hours. Records with pending reviews or
 active work are excluded from expiration. Treat long-lived pending or
-uncertain reviews as operational alerts: verify Agentic/Atlas state before
-archiving those records.
+uncertain reviews as operational alerts: verify Agent Engine and Atlas state
+before archiving those records.
 
 Allow Vercel to reach the thread-store MongoDB deployment. Standard Vercel
-Functions use dynamic egress addresses; this development deployment therefore
-requires `0.0.0.0/0` in the thread-store Atlas project's IP Access List unless
-Vercel Static IPs or Secure Compute is enabled. Database credentials still
-enforce access. Atlas MCP network allowlisting is separate: MCP runs from
+Functions use dynamic egress addresses, so you have two options:
+
+- **Recommended:** enable Vercel Static IPs or Secure Compute, and add only
+  those addresses to the thread-store Atlas project's IP Access List.
+- **Otherwise:** add `0.0.0.0/0` to that IP Access List. This opens the
+  thread-store cluster to connections from any address, leaving database
+  credentials as the only control. Use a dedicated cluster for thread state,
+  with a database user scoped to the thread-store database.
+
+Atlas MCP network allowlisting is separate: MCP runs from
 Agent Engine, so allow the Agent Engine runtime's egress addresses rather than Vercel's
 addresses.
 
@@ -324,7 +341,7 @@ pnpm vercel env run -e production --scope "$VERCEL_SCOPE" -- sh -c \
   --project-id "$AGENTIC_PROJECT_ID"'
 ```
 
-Rotate the Agentic client secret before its configured expiry:
+Rotate the Agent Engine service-account secret before its configured expiry:
 
 ```bash
 agentengine service-account rotate "$AGENTIC_SA_CLIENT_ID" \
@@ -345,7 +362,7 @@ Useful failure signals:
 - `Invalid scheme` means `MONGODB_URI` contains a malformed stored value.
 - `SSL alert 80` or `ReplicaSetNoPrimary` during startup usually means the
   thread-store Atlas IP Access List does not allow Vercel.
-- HTTP 401 from `/api/v1/oauth/token` means the Agentic service-account
+- HTTP 401 from `/api/v1/oauth/token` means the Agent Engine service-account
   credentials are invalid or its IP access list rejects Vercel.
 
 If verification fails, inspect recent production deployments and roll back:
@@ -364,7 +381,7 @@ request URLs.
 ## Human review
 
 Mutative Atlas Explorer tools suspend with an `agent_interrupt`. The bot stores
-the Agentic `session_id`, execution ID, all pending interrupts, and resume
+the Agent Engine `session_id`, execution ID, all pending interrupts, and resume
 schema, then posts Approve and Reject buttons. Only the allowlisted actor who
 requested the operation can decide it. The signed Chat SDK action supplies
 the actor and thread identity; button values contain only the interrupt ID. New
@@ -389,16 +406,6 @@ suggested prompts, App Home, Socket Mode configuration, response-size handling,
 and metadata-based delivery reconciliation. Adapters without durable message
 metadata use the shared conservative fallback and never assume an ambiguous
 delivery failed.
-
-## Migration compatibility
-
-Existing records in the `slack_threads` collection are copied lazily into the
-platform-neutral `chat_threads` collection on first thread activity. Pending
-reviews, requesters, recent events, and pending deliveries survive the cutover.
-Session IDs stored under the pre-rename session field (before it became
-`agentSessionId`) are not read, so a migrated thread starts a new Agent Engine
-session. Keep the old collection until every active thread has either been
-accessed or aged beyond its retention period.
 
 ## Development checks
 
