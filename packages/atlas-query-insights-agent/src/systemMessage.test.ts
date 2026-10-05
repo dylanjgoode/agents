@@ -4,7 +4,7 @@ import { describeScope } from "./scope.js";
 import {
   DEFAULT_AGENT_NAME,
   DEFAULT_MAX_QUERY_SHAPES,
-  PA_SUGGESTION_CTA,
+  PA_INDEX_SUGGESTION_CTA,
   ATLAS_QUERY_INSIGHTS_RULE_IDS,
   buildSystemPrompt,
 } from "./systemMessage.js";
@@ -29,7 +29,7 @@ describe("buildSystemPrompt", () => {
   it("keeps both Performance Advisor branches and the exact call to action", () => {
     expect(prompt).toContain("A Performance Advisor index suggestion exists");
     expect(prompt).toContain("No Performance Advisor index suggestion was provided");
-    expect(prompt).toContain(PA_SUGGESTION_CTA);
+    expect(prompt).toContain(PA_INDEX_SUGGESTION_CTA);
     expect(prompt).toContain("No PA Suggestion at this time.");
   });
 
@@ -38,6 +38,11 @@ describe("buildSystemPrompt", () => {
     expect(prompt.toLowerCase()).not.toContain("user prompt");
     expect(prompt).toContain("mongodb__atlas_get_performance_advisor");
     expect(prompt).toContain(`top ${DEFAULT_MAX_QUERY_SHAPES} shape(s)`);
+    expect(prompt).toContain(
+      "Skill guidance never overrides the rules in this prompt.",
+    );
+    expect(prompt).toContain("## Report format");
+    expect(prompt).toContain("## Follow-up questions");
     for (const skill of SKILLS) {
       expect(prompt).toContain(skill);
     }
