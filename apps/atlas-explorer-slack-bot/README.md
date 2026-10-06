@@ -223,7 +223,7 @@ The current hosted development deployment is:
 - Stable domain: `https://atlas-explorer-three.vercel.app`
 - Slack webhook:
   `https://atlas-explorer-three.vercel.app/api/webhooks/slack`
-- Function: `/api/webhooks/slack` in `iad1`, with a 300-second maximum
+- Function: `/api/webhooks/slack` with a 300-second maximum
 
 Set the deployment coordinates once before running the commands below:
 
@@ -245,7 +245,7 @@ export VERCEL_URL=https://atlas-explorer-three.vercel.app
      --scope "$VERCEL_SCOPE"
    ```
 
-   `vercel.json` owns the API-only framework, Fluid Compute, and `iad1` region
+   `vercel.json` owns the API-only framework and Fluid Compute
    settings, plus the build command `pnpm --filter @repo/agent-engine-chat
    build`, which compiles the workspace library that the webhook imports.
    `package.json` pins Node.js 22.
