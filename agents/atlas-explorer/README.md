@@ -198,7 +198,6 @@ the agent, and then revoke the previous secret.
 
 ```bash
 pnpm test
-pnpm test:integration
 pnpm typecheck
 pnpm build
 agentengine dev up
