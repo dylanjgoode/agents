@@ -2,7 +2,7 @@
 
 Atlas Query Insights is a read-only agent that finds slow queries through the
 Atlas Performance Advisor tool and explains the highest-impact shapes.
-It runs on the Agentic Platform with Atlas Managed MCP and five MongoDB
+It runs on Atlas Agent Engine with Atlas Managed MCP and five MongoDB
 skills.
 
 **Features:** Deep-agent planning · Performance Advisor evidence ·
@@ -62,8 +62,9 @@ The example config grants `GROUP_DATA_ACCESS_READ_ONLY` only. Do not add
 a read-write role.
 
 Copy `mcp-config.example.json` to ignored `mcp-config.json`. Replace
-`YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4. Keep the Agentic
-Platform egress addresses so a deployed workspace can call Managed MCP.
+`YOUR_LOCAL_PUBLIC_IP` with this machine's public IPv4. Replace the
+`AGENT_ENGINE_IP_*` placeholders with your Agent Engine deployment's egress
+addresses so a deployed workspace can call Managed MCP.
 
 Use a separate MCP configuration per environment, named
 `atlas-query-insights-{environment}`. Requires Atlas CLI 1.58 or later.
@@ -140,11 +141,45 @@ Open the playground at http://localhost:3000. Stop the stack with
 Ask which slow queries matter on the cluster. The agent should explain
 the highest-impact shapes.
 
+## How the report works
+
+1. The agent calls the Performance Advisor tool for one cluster to get slow
+   query logs and suggested indexes. By default, Atlas returns the last 24
+   hours. You can ask the agent to start from a different date or to look at
+   specific collections.
+2. The tool returns up to 50 recent slow query logs from each node in the
+   cluster, so a three-node replica set can return up to 150. This is a
+   sample, not every execution of a query over time.
+3. The agent groups the logs into query shapes, with literal values
+   replaced by placeholders. It orders them by documents examined, then
+   working time, then execution count.
+4. It reports on the top three shapes. To change that, set `maxQueryShapes`
+   in `config.ts`. Each shape gets a plain-language overview and up to two
+   areas worth investigating, usually with a link to the MongoDB docs. When
+   Performance Advisor suggests an index for a shape, that suggestion comes
+   first, with the full index definition and the `createIndex` command that
+   would create it. The agent doesn't run the command. You decide whether
+   to.
+
+Things to know:
+
+- The agent only names index fields that Performance Advisor suggested.
+- The model sees the raw Performance Advisor output as well as the redacted
+  query shapes. The raw slow query log lines can include literal query
+  values, and those values are sent to your model provider.
+- `scope.projectId` and `scope.clusterName` in `config.ts` pin the agent to
+  one project and cluster through its system prompt. Tool calls aren't
+  filtered by that pin. The hard boundary is the one Atlas project that the
+  MCP configuration belongs to.
+
 ## Safety
 
 - The MCP configuration uses `GROUP_DATA_ACCESS_READ_ONLY`.
 - The tool allowlist never enables writes, and there is no
   human-in-the-loop path.
+- `aggregate` stays available, and the agent isn't told to avoid `$out` or
+  `$merge`. A read-only credential is what stops those stages from writing,
+  so don't give the MCP configuration a read-write role.
 - The MCP configuration belongs to one project, so the agent cannot reach
   another.
 - The agent can recommend an index. It cannot create one.
