@@ -6,3 +6,5 @@ dist/
 .pnpm-store/
 .langgraph_api/
 .mcp-credentials.json
+.vercel
+.env*

@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# Copyright 2026 MongoDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Runs on Cursor's default Cloud Agent image, which already has gh, git,
 # Node, and pnpm. Adds Docker and the MongoDB agentengine CLI.
 set -euo pipefail
@@ -20,7 +34,9 @@ install_docker() {
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
     | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
   sudo apt-get update
-  sudo apt-get install -y --no-install-recommends \
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold" \
     docker-ce=5:28.5.2-1~ubuntu.24.04~noble \
     docker-ce-cli=5:28.5.2-1~ubuntu.24.04~noble \
     containerd.io \
@@ -55,6 +71,24 @@ fi
 
 sudo ln -sfn "${bin}" /usr/local/bin/agentengine
 agentengine --version
+
+# Apache headers are applied by the Husky pre-commit hook. install.sh is
+# snapshotted with the environment, so new images get the binary here.
+install_addlicense() {
+  if command -v addlicense >/dev/null 2>&1; then
+    return 0
+  fi
+  go install github.com/google/addlicense@v1.2.0
+  local license_bin
+  license_bin="$(go env GOPATH)/bin/addlicense"
+  if [[ ! -x "${license_bin}" ]]; then
+    echo "addlicense install did not produce ${license_bin}" >&2
+    exit 1
+  fi
+  sudo ln -sfn "${license_bin}" /usr/local/bin/addlicense
+}
+
+install_addlicense
 
 # GH_TOKEN, when set, is a personal classic PAT. gh prefers it over the
 # sandbox GitHub App login. setup-git makes git use that same token.

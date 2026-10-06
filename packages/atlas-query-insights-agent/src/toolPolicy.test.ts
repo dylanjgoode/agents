@@ -1,0 +1,76 @@
+/**
+ * Copyright 2026 MongoDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import {
+  ATLAS_QUERY_INSIGHTS_MCP_TOOLS,
+  selectAtlasQueryInsightsTools,
+} from "./toolPolicy.js";
+
+describe("Atlas Query Insights tool policy", () => {
+  it("allowlists the read-only investigation tools", () => {
+    expect([...ATLAS_QUERY_INSIGHTS_MCP_TOOLS].sort()).toEqual([
+      "mongodb__aggregate",
+      "mongodb__atlas_connect_cluster",
+      "mongodb__atlas_get_performance_advisor",
+      "mongodb__atlas_inspect_cluster",
+      "mongodb__atlas_list_alerts",
+      "mongodb__atlas_list_clusters",
+      "mongodb__atlas_list_orgs",
+      "mongodb__atlas_list_projects",
+      "mongodb__collection_indexes",
+      "mongodb__collection_schema",
+      "mongodb__collection_storage_size",
+      "mongodb__connect",
+      "mongodb__count",
+      "mongodb__db_stats",
+      "mongodb__explain",
+      "mongodb__find",
+      "mongodb__list_collections",
+      "mongodb__list_databases",
+      "mongodb__list_knowledge_sources",
+      "mongodb__remote_atlas_connect",
+      "mongodb__search_knowledge",
+    ]);
+  });
+
+  it("keeps aggregate and drops writes, users, access lists, and streams", () => {
+    const previous = process.env.ALLOW_WRITE_OPERATIONS;
+    process.env.ALLOW_WRITE_OPERATIONS = "true";
+
+    const discovered = [
+      { name: "mongodb__find" },
+      { name: "mongodb__aggregate" },
+      { name: "mongodb__insert_many" },
+      { name: "mongodb__atlas_list_db_users" },
+      { name: "mongodb__atlas_inspect_access_list" },
+      { name: "mongodb__atlas_streams_discover" },
+      { name: "mongodb__drop_collection" },
+    ];
+
+    expect(selectAtlasQueryInsightsTools(discovered)).toEqual([
+      { name: "mongodb__find" },
+      { name: "mongodb__aggregate" },
+    ]);
+
+    if (previous === undefined) {
+      delete process.env.ALLOW_WRITE_OPERATIONS;
+    } else {
+      process.env.ALLOW_WRITE_OPERATIONS = previous;
+    }
+  });
+});
