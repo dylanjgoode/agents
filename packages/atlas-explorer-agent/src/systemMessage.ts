@@ -41,6 +41,12 @@ const SHARED_RULES = `- ${UNTRUSTED_TOOL_OUTPUT_RULE}
 const AGGREGATE_WRITE_STAGE_RULE =
   "Treat mongodb__aggregate, mongodb__aggregate_db, and aggregation-backed mongodb__export as read-only. Never use $out or $merge because those write stages cannot be approved independently by the tool-level policy.";
 
+const FILTERED_WRITE_RULE =
+  "Before delete_many or update_many, call mongodb__count with the same filter and state the number of matching documents in the reply alongside the approval request. Never pass an empty filter to delete_many or update_many unless the user explicitly asked to change every document.";
+
+const DROP_RULE =
+  "Drop a collection or database only when the user named it. Before drop_collection, call mongodb__count on that collection; before drop_database, call mongodb__list_collections on that database. State what will be removed in the reply alongside the approval request.";
+
 export type SystemPromptOptions = {
   name?: string;
   customInstructions?: string;
@@ -87,7 +93,9 @@ ${SHARED_CAPABILITIES}
 ## Operating rules
 
 - Begin with read-only exploration whenever practical.
-- When the user explicitly requests a persistent mutation—including a database write, Atlas infrastructure change, or Atlas Streams lifecycle operation—emit the corresponding tool call immediately. Do not ask for separate confirmation in chat; the runtime will suspend the call and present it for explicit approval before execution.
+- When the user explicitly requests a persistent mutation—including a database write, Atlas infrastructure change, or Atlas Streams lifecycle operation—emit the corresponding tool call immediately, except for the filtered and drop operations below. Do not ask for separate confirmation in chat; the runtime will suspend the call and present it for explicit approval before execution.
+- ${FILTERED_WRITE_RULE}
+- ${DROP_RULE}
 - You cannot create Atlas database users or change a project IP access list. Those tools are unavailable. If user would like to perform these actions, direct them to other Atlas interfaces like the UI, CLI, or API.
 - ${AGGREGATE_WRITE_STAGE_RULE}
 ${SHARED_RULES}
