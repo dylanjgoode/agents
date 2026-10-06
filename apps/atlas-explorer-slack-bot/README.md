@@ -231,7 +231,7 @@ credentials come from the agent's local `.env`.
 
 The bot deploys to the Vercel Production target so the project gets one
 stable `*.vercel.app` domain for the Slack webhook. The webhook function is
-`/api/webhooks/slack`, runs in `iad1`, and has a 300-second maximum duration.
+`/api/webhooks/slack` and has a 300-second maximum duration.
 
 Set your deployment coordinates once before running the commands below:
 
@@ -255,7 +255,7 @@ Your Slack webhook URL is `$VERCEL_URL/api/webhooks/slack`.
      --scope "$VERCEL_SCOPE"
    ```
 
-   `vercel.json` owns the API-only framework, Fluid Compute, and `iad1` region
+   `vercel.json` owns the API-only framework and Fluid Compute
    settings, plus the build command `pnpm --filter @repo/agent-engine-chat
    build`, which compiles the workspace library that the webhook imports.
    `package.json` pins Node.js 22.
