@@ -80,6 +80,19 @@ describe("system prompt modes", () => {
     );
   });
 
+  it("looks up an unnamed project, cluster, or database in either mode", () => {
+    for (const writeEnabled of [false, true]) {
+      const prompt = buildSystemPrompt(writeEnabled);
+
+      expect(prompt).toContain(
+        "When the user does not name an existing project, cluster, or database, call mongodb__atlas_list_projects, mongodb__atlas_list_clusters, and mongodb__list_databases to find it, then continue the requested task.",
+      );
+      expect(prompt).toContain(
+        "Ask the user only when more than one plausible match remains, when nothing matches, or when the task needs information the list tools cannot provide, such as the name or settings for a new resource.",
+      );
+    }
+  });
+
   it("uses a custom name in both read-only and write-enabled prompts", () => {
     const readOnly = buildSystemPrompt(false, { name: "Cluster Scout" });
     const writeEnabled = buildSystemPrompt(true, { name: "Cluster Scout" });
