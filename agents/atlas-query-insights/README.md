@@ -177,9 +177,8 @@ Things to know:
 - The MCP configuration uses `GROUP_DATA_ACCESS_READ_ONLY`.
 - The tool allowlist never enables writes, and there is no
   human-in-the-loop path.
-- `aggregate` stays available, and the agent isn't told to avoid `$out` or
-  `$merge`. A read-only credential is what stops those stages from writing,
-  so don't give the MCP configuration a read-write role.
+- `aggregate` stays available for read pipelines. A pipeline that contains
+  `$out` or `$merge` is rejected because this agent is read-only.
 - The MCP configuration belongs to one project, so the agent cannot reach
   another.
 - The agent can recommend an index. It cannot create one.

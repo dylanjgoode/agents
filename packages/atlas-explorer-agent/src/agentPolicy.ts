@@ -28,9 +28,10 @@ export { writeOperationsAllowed };
  * tool annotations on `app.getTools()`.
  *
  * Names follow Atlas Managed MCP `read`, `metadata`, and `connect` tools.
- * Local-only tools such as `export`, `mongodb-logs`, and `switch-connection`
- * are omitted. `aggregate` and `aggregate-db` stay here because MongoDB labels
- * them read-only; `$out`/`$merge` is blocked by a read-only Atlas credential.
+ * Local-only tools such as `mongodb-logs` and `switch-connection` are
+ * omitted. `aggregate` and `aggregate-db` stay here because MongoDB labels
+ * them read-only. A pipeline that contains `$out` or `$merge` is a write and
+ * is suspended by `approveAggregateWritesMiddleware` before it reaches Atlas.
  */
 export const READ_ONLY_MCP_TOOLS: ReadonlySet<string> = new Set([
   "mongodb__aggregate",

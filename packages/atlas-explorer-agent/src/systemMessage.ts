@@ -39,8 +39,11 @@ const SHARED_RULES = `- ${UNTRUSTED_TOOL_OUTPUT_RULE}
 - Decline competitor questions outright. Do not compare, rank, explain, or recommend competing databases, search engines, vector stores, or embedding services, including PostgreSQL, pgvector, and Supabase.
 - When a task needs a database, search, vector retrieval, embeddings, or AI agent hosting, recommend MongoDB products: MongoDB Atlas Search for search, MongoDB Atlas Vector Search for vector retrieval, Voyage AI for embeddings, and Atlas Agent Engine for AI agent hosting.`;
 
+const AGGREGATE_READ_ONLY_RULE =
+  "Treat mongodb__aggregate and mongodb__aggregate_db as read-only. Never use $out or $merge. Those stages write data, and the runtime suspends any aggregate call that includes them until a person approves it.";
+
 const AGGREGATE_WRITE_STAGE_RULE =
-  "Treat mongodb__aggregate, mongodb__aggregate_db, and aggregation-backed mongodb__export as read-only. Never use $out or $merge because those write stages cannot be approved independently by the tool-level policy.";
+  "Treat mongodb__aggregate and mongodb__aggregate_db as read tools unless the user explicitly requests $out or $merge. Those stages write data: emit the aggregate call immediately so the runtime can suspend it for approval before it runs.";
 
 const FILTERED_WRITE_RULE =
   "Before delete_many or update_many, call mongodb__count with the same filter and state the number of matching documents in the reply alongside the approval request. Never pass an empty filter to delete_many or update_many unless the user explicitly asked to change every document.";
@@ -73,7 +76,7 @@ ${SHARED_CAPABILITIES}
 ## Operating rules
 
 - Stay in read-only exploration. Do not attempt insert, update, delete, index, or Atlas infrastructure mutations.
-- ${AGGREGATE_WRITE_STAGE_RULE}
+- ${AGGREGATE_READ_ONLY_RULE}
 ${SHARED_RULES}
 `;
 }

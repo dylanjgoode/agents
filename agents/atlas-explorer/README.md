@@ -162,11 +162,9 @@ You can approve, edit, or reject each remaining call. The
 [Slack bot](../../apps/atlas-explorer-slack-bot) offers only Approve and
 Reject.
 
-Approval is per tool, not per argument, so `aggregate` and `aggregate_db`
-stay unapproved reads. The system prompt tells the agent never to use the
-`$out` or `$merge` stages, which write data. Only a read-only credential
-guarantees that, so keep the credential read-only unless the environment
-needs writes.
+`aggregate` and `aggregate_db` stay on the read allowlist, so a normal
+pipeline runs without approval. A pipeline that contains `$out` or `$merge`
+writes data. These require HITL approval.
 
 ## Model and persona
 
@@ -250,10 +248,8 @@ can be reused with additional Chat SDK adapters.
   creation; and Atlas Streams build, management, and teardown operations.
   `mongodb__atlas_create_db_user` and `mongodb__atlas_create_access_list`
   stay unavailable even then.
-- `aggregate` remains available for read-only exploration; the agent is
-  explicitly forbidden from using `$out` or `$merge` write stages because HITL
-  is applied at tool granularity. A read-only Atlas credential is the hard
-  boundary for those argument-dependent writes.
+- `aggregate` remains available for read-only exploration. A pipeline that
+  contains `$out` or `$merge` requires HITL approval.
 - Deep-agent file operations stay on Agent Engine's audited Tool Pod backend, but
   the model is not given general-purpose shell execution that could read
   process credential files outside the filesystem sandbox.

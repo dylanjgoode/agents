@@ -23,6 +23,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  approveAggregateWritesMiddleware,
   prepareAtlasExplorerInput,
   READ_ONLY_SYSTEM_PROMPT,
   stampClientUser,
@@ -196,6 +197,7 @@ describe("Atlas Explorer graph assembly", () => {
           stampResumeClientUserMiddleware,
           expect.objectContaining({ name: "stripOpenAIToolEcho" }),
           harness.hitlMiddleware,
+          approveAggregateWritesMiddleware,
           expect.objectContaining({ name: "recoverToolErrors" }),
         ],
       }),
@@ -308,5 +310,12 @@ describe("Atlas Explorer graph assembly", () => {
       },
       descriptionPrefix: "MongoDB or Atlas operation pending approval",
     });
+    expect(
+      (
+        harness.deepAgent.mock.calls[0]?.[1] as {
+          middleware?: { name?: string }[];
+        }
+      ).middleware?.map((middleware) => middleware.name),
+    ).toContain("approveAggregateWrites");
   });
 });
