@@ -198,6 +198,46 @@ The MCP configuration is provisioned once in Atlas, scoped to one project:
 Rotate the client secret in Atlas, update the local or deployed secret, verify
 the agent, and then revoke the previous secret.
 
+### Access token limit
+
+The Atlas MCP server allows each service account at most 100 active access
+tokens, and each token lasts 1 hour. The MCP configuration's client ID is a
+service account, so everything that uses the configuration shares that limit:
+the Playground, the CLI, the Slack bot, and any evaluation runs.
+
+Agent Engine mints a new token when it starts an AER or Tool Pod process that
+doesn't already have a valid one (step 2 above). Each pod keeps its own token
+cache, so a fresh process always needs a new token. A session starts at least
+one AER and one Tool Pod process, and follow-up messages often start new ones.
+Resuming after an approval reuses the session's processes. Your numbers can
+vary with traffic and platform scaling.
+
+When the limit is reached:
+
+- New conversations fail with `The agent did not become ready during
+  startup.`
+- Runtime logs show `Access Token limit reached`:
+
+  ```bash
+  agentengine logs --grep "Access Token limit" --since 1h
+  ```
+
+- The workspace recovers on its own as the oldest tokens expire, within an
+  hour of the burst. Redeploying doesn't help, because the redeployed
+  processes need new tokens too.
+
+To stay under the limit:
+
+- Use a separate MCP configuration for each environment, as described in
+  [Configure](#configure).
+- Spread load tests and evaluation runs over time. Every message can start
+  new processes, so a burst of messages uses tokens quickly.
+- To handle more traffic, deploy several copies of the agent, each in its
+  own workspace with its own MCP configuration, and balance new
+  conversations across them. Each MCP configuration has its own token
+  limit. Keep every conversation on the copy that started it, because
+  session state belongs to one workspace.
+
 ## Run locally
 
 ```bash
