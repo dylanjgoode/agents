@@ -1,12 +1,12 @@
 # Build a data map for Atlas Explorer (optional)
 
-A data map is a short list of the databases, collections and fields in the user's cluster, added to Atlas Explorer's system prompt so it doesn't have to explore before it can answer. Atlas Explorer only. Query Insights doesn't need one.
+A data map is a short list of the databases, collections and fields in the user's cluster, added to Atlas Explorer's system prompt so it doesn't have to explore before it can answer. Atlas Explorer only.
 
 > **Warning: a data map goes out of date.** It is a snapshot. When the schema changes, the agent is still told the old one. The map says so in its own text, and the user should regenerate it when their schema changes.
 
 ## Before you start
 
-Only do this if the user asked for it and **this coding agent already has the MongoDB MCP server connected** (the tools `list-databases`, `list-collections` and `collection-schema` are available). If not, stop. Don't ask for a connection string or credentials, and don't read `.env`. Tell the user they can write the map by hand into `systemPrompt.customInstructions` instead.
+Only do this if the user asked for it. This this flow assumes that **this coding agent already has the MongoDB MCP server connected** (the tools `list-databases`, `list-collections` and `collection-schema` are available). 
 
 ## 1. Get consent
 
@@ -58,5 +58,3 @@ The change needs `pnpm build` and a redeploy to take effect (see sections 6 and 
 
 - The map is a snapshot from today's date, and they should regenerate it when the schema changes.
 - To remove it, delete the data map text from `customInstructions`.
-
-In your report, say how many databases and collections you mapped, not what was in them.
