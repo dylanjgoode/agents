@@ -28,6 +28,7 @@ import {
   mutativeInterruptOn,
   prepareAtlasExplorerInput,
   recoverToolErrorsMiddleware,
+  redactSecretsMiddleware,
   selectAtlasTools,
   stampResumeClientUserMiddleware,
   startRuntimeDiagnostics,
@@ -103,6 +104,7 @@ export const buildAgent = app.entrypoint(() => {
       middleware: [
         stampResumeClientUserMiddleware,
         stripToolEchoMiddleware,
+        redactSecretsMiddleware,
         mutativeToolReview,
         approveAggregateWritesMiddleware,
         recoverToolErrorsMiddleware,
