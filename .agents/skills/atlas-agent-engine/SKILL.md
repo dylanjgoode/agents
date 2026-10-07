@@ -1,6 +1,6 @@
 ---
 name: atlas-agent-engine
-description: Guide for working on the TypeScript agents in this repo (atlas-explorer, atlas-query-insights) that run on Atlas Agent Engine. Use before editing an agent's agent.yaml, main.ts, config.ts, its packages/*-agent library, its vendored skills, tool policy or approval middleware, or dev.yaml. For deploying, use deploy-mongodb-agents.
+description: Conventions for editing the source of the TypeScript agents in this repo (atlas-explorer, atlas-query-insights): agent.yaml, main.ts, config.ts, the packages/*-agent libraries, tool allowlists, approval middleware, vendored skills, and dev.yaml. Use when changing how an agent is built or what it is allowed to do. Not for running agentengine or Atlas commands, setting secrets, or deploying; use deploy-mongodb-agents.
 ---
 
 # Working on the Atlas Agent Engine agents
