@@ -83,6 +83,11 @@ export function getHttpRuntime(
   return httpRuntime;
 }
 
+/** Drops the cached HTTP runtime after shutdown so the next start reads env again. */
+export function resetHttpRuntime(): void {
+  httpRuntime = undefined;
+}
+
 export async function createRuntime(
   config: SlackBotConfig,
   options: RuntimeOptions = {},
@@ -115,6 +120,7 @@ export async function createRuntime(
       mode: config.mode === "http" ? "webhook" : "socket",
       botToken: config.slack.botToken,
       displayName: config.slack.botDisplayName,
+      ...(config.slack.apiUrl ? { apiUrl: config.slack.apiUrl } : {}),
       ...(config.slack.appToken
         ? { appToken: config.slack.appToken }
         : {}),
