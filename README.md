@@ -60,7 +60,10 @@ Create an Atlas MCP configuration for one Atlas project with the Atlas CLI.
 The roles you give that configuration decide what the agent can see and do.
 The example grants read-only access. Before you create it, add your IP
 addresses to the access list in `mcp-config.json`. Add the client ID and
-secret it returns to `.env`, along with your model API key.
+secret it returns to `.env`, along with your model API key. The example
+config and the Atlas CLI steps are in each agent's README:
+[Atlas Explorer](agents/atlas-explorer/README.md#configure) or
+[Atlas Query Insights](agents/atlas-query-insights/README.md#configure).
 
 Atlas Explorer uses OpenAI by default. To use Anthropic, Gemini, or Cerebras
 instead, change the provider and model in
