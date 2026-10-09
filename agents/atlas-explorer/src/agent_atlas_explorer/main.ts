@@ -38,6 +38,7 @@ import {
   stampResumeClientUserMiddleware,
   startRuntimeDiagnostics,
   stripToolEchoMiddleware,
+  surfaceTokenMintFailures,
   withRequesterMetadata,
   withoutShellExecution,
   writeOperationsAllowed,
@@ -53,6 +54,7 @@ function log(level: "INFO" | "WARN" | "ERROR", msg: string): void {
 process.env.AGENTIC_AGENT_WORKDIR ||= process.cwd();
 
 export const app = new App({ appName: "atlas-explorer" });
+surfaceTokenMintFailures(app);
 registerKnowledgeTools(app);
 const diagnostics = atlasExplorerConfig.diagnostics.logRuntimeLifecycle
   ? startRuntimeDiagnostics({

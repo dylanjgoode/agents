@@ -32,6 +32,7 @@ export {
   stampResumeClientUserMiddleware,
   stampResumeMessages,
   stripToolEchoMiddleware,
+  surfaceTokenMintFailures,
   withRequesterMetadata,
   withoutShellExecution,
   type BuildLLMOptions,
