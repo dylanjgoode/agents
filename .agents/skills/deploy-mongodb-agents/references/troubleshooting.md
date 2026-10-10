@@ -42,6 +42,7 @@ agentengine build logs <build-id>
 | Build failed                                   | [Build failed](#build-failed)                                                                                                                |
 | `code = Unimplemented` on invoke               | [Routing mismatch](#routing-mismatch)                                                                                                        |
 | `status` is `degraded`                         | Find the unhealthy component in `status --verbose`, then check its logs                                                                      |
+| `The agent did not become ready during startup.` or `Access Token limit reached` in logs | [Token limit reached](#token-limit-reached)                                                         |
 | Agent runs but model or MCP calls fail         | [Secret missing](#secret-missing-or-misnamed), [Blocked host](#blocked-outbound-host), [MCP rejects the agent](#atlas-mcp-rejects-the-agent) |
 | Read-only when it shouldn't be, or the reverse | [Write access](#write-access-is-wrong)                                                                                                       |
 | Anything in [Escalate](#escalate)              | Escalate                                                                                                                                     |
@@ -109,6 +110,26 @@ The public MCP docs cover setup but not error diagnosis. They have no 401/403 gu
 - [Rate limits](https://www.mongodb.com/docs/mcp-server/remote-mcp/rate-limits.md): requests are limited per IP and per user, and the server returns HTTP 429 when a limit is exceeded. Wait and retry with backoff; there is no way to request a higher limit.
 
 Don't send the user to the "Troubleshoot MongoDB MCP Server" page. It covers the self-run local MCP server, which these agents don't use.
+
+## Token limit reached
+
+The Atlas MCP server allows 100 active access tokens per service account, and each token lasts 1 hour. Everything that uses the same MCP configuration shares the limit: the Playground, the CLI, the Slack bot, and evaluation runs. A session keeps its processes for an idle TTL of 10 minutes, and follow-ups within that window mint nothing. A new conversation, or a message after the TTL, starts new processes and mints 2 tokens: one for the agent process and one for the tool process. Spare processes that Agent Engine starts ahead of demand can also mint tokens, so an idle agent still uses part of the limit. Once the limit is reached, new conversations fail until the oldest tokens expire. This is the right section when new conversations fail but `status` is `ready` and the credentials are correct.
+
+Confirm it:
+
+```bash
+agentengine logs --grep "Access Token limit" --since 1h
+```
+
+Matches, together with `The agent did not become ready during startup.` on invoke, confirm the cause.
+
+- **Do not redeploy.** The new processes need tokens too, so a redeploy doesn't help and mints more. This overrides the once-per-cause redeploy rule.
+- **Don't retry `invoke` in a loop.** Each attempt can start processes that use tokens.
+- Wait up to an hour. The workspace recovers on its own as the oldest tokens expire.
+- Ask the user what else uses the same MCP configuration, such as load tests, evaluation runs, or the Slack bot. Spread those out, or give each environment its own MCP configuration (step 1 of `../SKILL.md`). Sending follow-ups in the same session within 10 minutes reuses its processes and mints nothing.
+- If the logs show `HTTP 429` with `RATE_LIMITED` instead, Atlas is rate-limiting token requests (50 per minute for each IP and client ID). That clears within a minute, so wait and retry once rather than waiting an hour.
+
+The "Access token limit" section of the agent's README has the capacity numbers and how to stay under the limit. Follow the README if it disagrees with this section.
 
 ## Write access is wrong
 

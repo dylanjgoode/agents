@@ -221,6 +221,19 @@ how they're set up.
   The bot is built on [Chat SDK](https://chat-sdk.dev), so you can adapt it to
   other chat platforms.
 
+## Skills for your coding agent
+
+The repository includes skills in [`.agents/skills`](.agents/skills) that help a
+coding agent work with these agents and with Atlas Agent Engine:
+
+| Skill | Use it to |
+| ----- | --------- |
+| [`deploy-mongodb-agents`](.agents/skills/deploy-mongodb-agents) | Deploy Atlas Explorer or Atlas Query Insights: create the MCP configuration, set secrets, build, deploy, and diagnose a failed deploy. |
+| [`atlas-agent-engine`](.agents/skills/atlas-agent-engine) | Change how an agent is built or what it's allowed to do: `agent.yaml`, tool allowlists, approval middleware, and the agent libraries. |
+| [`atlas-agent-engine-docs`](.agents/skills/atlas-agent-engine-docs) | Answer questions about the `agentengine` CLI and the platform from current documentation. |
+| [`agent-engine-troubleshoot-deploy`](.agents/skills/agent-engine-troubleshoot-deploy) | Diagnose a failed or stuck deployment from status, deploy events, and runtime logs. |
+| [`agent-engine-feature-validations`](.agents/skills/agent-engine-feature-validations) | Check framework code (Python LangGraph and Google ADK) against the shapes the SDK supports before you build or deploy. |
+
 ## Contributing
 
 To learn about the repository layout, local development, and tests, see
