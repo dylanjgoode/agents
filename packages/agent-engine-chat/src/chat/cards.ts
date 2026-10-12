@@ -34,7 +34,8 @@ const DEFAULT_REVIEW_CARD_TITLE = "Agent operation requires approval";
 const MAX_DISPLAYED_ACTIONS = 45;
 // One chat text block cannot carry an unbounded tool call. Slack section
 // text caps at 3,000 characters, so a preview past this limit is truncated
-// and cannot be approved from the card.
+// and cannot be approved from the card. The limit counts the escaped text,
+// which is longer than the arguments.
 export const MAX_ARGUMENT_TEXT = 1_800;
 
 export interface ReviewCardOptions {
@@ -122,7 +123,7 @@ function argumentCodeBlock(args: Record<string, unknown>): {
   text: string;
   truncated: boolean;
 } {
-  const argumentsText = JSON.stringify(args, null, 2);
+  const argumentsText = escapeCodeBlockText(JSON.stringify(args, null, 2));
   const truncated = argumentsText.length > MAX_ARGUMENT_TEXT;
   const truncatedArguments = truncated
     ? `${argumentsText.slice(0, MAX_ARGUMENT_TEXT - 3)}...`
@@ -131,4 +132,39 @@ function argumentCodeBlock(args: Record<string, unknown>): {
     text: `\`\`\`\n${truncatedArguments}\n\`\`\``,
     truncated,
   };
+}
+
+// An invisible character. Putting one after a character changes how Slack and
+// the chat SDK parse the text without changing how it reads.
+const ZERO_WIDTH_SPACE = "\u200b";
+
+// Invisible characters that display the text after them in a different order:
+// embeddings, overrides, and isolates, and the characters that end them.
+// Line-break and joining characters are left as they are, so Arabic, Hebrew,
+// and Thai still render.
+const BIDI_OVERRIDE_CHARACTERS = /[\u202A-\u202E\u2066-\u2069]/g;
+
+// Argument values are attacker-influenced, so nothing in them may act as
+// formatting in the card.
+function escapeCodeBlockText(text: string): string {
+  return (
+    text
+      // Show text-reordering characters as `\uXXXX`, so a value can't be
+      // displayed in a different order from the one that will run.
+      .replace(
+        BIDI_OVERRIDE_CHARACTERS,
+        (char) => `\\u${char.codePointAt(0)!.toString(16).padStart(4, "0")}`,
+      )
+      // Slack turns `<...>` into links, mentions, and `@here`. Written as
+      // entities, `&`, `<`, and `>` show up as plain characters.
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      // Three backticks in a row would end the code block early.
+      .replaceAll("`", `\`${ZERO_WIDTH_SPACE}`)
+      // The chat SDK turns `**text**` into bold and `{{emoji:name}}` into an
+      // emoji, even inside a code block.
+      .replaceAll("*", `*${ZERO_WIDTH_SPACE}`)
+      .replaceAll("{", `{${ZERO_WIDTH_SPACE}`)
+  );
 }
