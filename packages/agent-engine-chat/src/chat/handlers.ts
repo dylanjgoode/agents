@@ -44,6 +44,10 @@ import {
   resolveAgentChatMessages,
   type AgentChatMessages,
 } from "./messages.js";
+import {
+  assertValidSessionLimit,
+  type SessionLimit,
+} from "./sessionHealth.js";
 import type {
   AgentGateway,
   HandlerLogger,
@@ -64,6 +68,12 @@ export interface ChatHandlerOptions {
     value: string,
     threadId: string,
   ) => string | null;
+  /**
+   * Caps how many agent sessions can be active within a rolling hour. Each
+   * session uses Atlas MCP access tokens. Messages that would start a session
+   * past the cap get a limit-reached reply instead. Leave unset for no cap.
+   */
+  sessionLimit?: SessionLimit;
   store: ThreadStore;
 }
 
@@ -74,6 +84,9 @@ interface ResolvedChatHandlerOptions extends ChatHandlerOptions {
 function resolveHandlerOptions(
   options: ChatHandlerOptions,
 ): ResolvedChatHandlerOptions {
+  if (options.sessionLimit) {
+    assertValidSessionLimit(options.sessionLimit);
+  }
   return {
     ...options,
     messages: resolveAgentChatMessages(options.messages),
@@ -222,6 +235,9 @@ async function dispatchMessage(
         ? { authorizedActorIds: options.authorizedActorIds }
         : {}),
       ...(options.logger ? { logger: options.logger } : {}),
+      ...(options.sessionLimit
+        ? { sessionLimit: options.sessionLimit }
+        : {}),
     },
   );
 }

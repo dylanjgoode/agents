@@ -138,6 +138,13 @@ export class MongoThreadStore implements ThreadStore {
         },
       },
     );
+    // Backs listRecentSessionActivity. Its key pattern differs from the
+    // partial TTL indexes above, so it cannot collide with them. Reads stay
+    // correct without it; it only avoids scanning the collection.
+    await this.collection.createIndex(
+      { updatedAt: 1, agentSessionId: 1 },
+      { name: "session_activity" },
+    );
   }
 
   async get(threadId: string): Promise<ThreadRecord | null> {
@@ -184,6 +191,7 @@ export class MongoThreadStore implements ThreadStore {
           return {
             status: "claimed",
             record: withoutId(inserted),
+            previousRecord: null,
           };
         } catch (error) {
           if (isDuplicateKeyError(error)) {
@@ -202,7 +210,7 @@ export class MongoThreadStore implements ThreadStore {
         return { status, record: withoutId(existing) };
       }
 
-      const updated = await this.collection.findOneAndUpdate(
+      const previous = await this.collection.findOneAndUpdate(
         {
           _id: key,
           recentEventIds: { $ne: eventId },
@@ -234,10 +242,15 @@ export class MongoThreadStore implements ThreadStore {
             },
           },
         },
-        { returnDocument: "after" },
+        { returnDocument: "before" },
       );
-      if (updated) {
-        return { status: "claimed", record: withoutId(updated) };
+      if (previous) {
+        const previousRecord = withoutId(previous);
+        return {
+          status: "claimed",
+          record: claimedRecord(previousRecord, eventId, claimedAt),
+          previousRecord,
+        };
       }
     }
 
@@ -371,6 +384,28 @@ export class MongoThreadStore implements ThreadStore {
     return document?.pendingDelivery ?? null;
   }
 
+  async listRecentSessionActivity(
+    since: Date,
+    excludeThreadId: string,
+  ): Promise<Date[]> {
+    await this.ensureInitialized();
+    const documents = await this.collection
+      .find(
+        {
+          _id: { $ne: threadKey(excludeThreadId) },
+          updatedAt: { $gte: since },
+          $or: [
+            { agentSessionId: { $exists: true } },
+            { inFlightEventId: { $exists: true } },
+          ],
+        },
+        { projection: { updatedAt: 1 } },
+      )
+      .sort({ updatedAt: 1 })
+      .toArray();
+    return documents.map((document) => document.updatedAt);
+  }
+
   async close(): Promise<void> {
     await this.client?.close();
   }
@@ -487,6 +522,24 @@ function withId(record: ThreadRecord): StoredThreadRecord {
 function withoutId(document: StoredThreadRecord): ThreadRecord {
   const { _id: _discarded, ...record } = document;
   return record;
+}
+
+/** Applies `claimTurn`'s update to `previous`. Keep the two in step. */
+function claimedRecord(
+  previous: ThreadRecord,
+  eventId: string,
+  claimedAt: Date,
+): ThreadRecord {
+  const { retentionState: _discarded, ...record } = previous;
+  return {
+    ...record,
+    recentEventIds: [...(previous.recentEventIds ?? []), eventId].slice(
+      -RECENT_EVENT_LIMIT,
+    ),
+    inFlightEventId: eventId,
+    inFlightStartedAt: claimedAt,
+    updatedAt: claimedAt,
+  };
 }
 
 function legacySlackThreadKey(threadId: string): string | null {

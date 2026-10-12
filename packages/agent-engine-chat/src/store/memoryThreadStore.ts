@@ -116,6 +116,7 @@ export class MemoryThreadStore implements ThreadStore {
     return {
       status: "claimed",
       record: structuredClone(claimed),
+      previousRecord: existing ? structuredClone(existing) : null,
     };
   }
 
@@ -224,6 +225,23 @@ export class MemoryThreadStore implements ThreadStore {
       pendingDelivery: claimed,
     }));
     return structuredClone(claimed);
+  }
+
+  async listRecentSessionActivity(
+    since: Date,
+    excludeThreadId: string,
+  ): Promise<Date[]> {
+    const excludedKey = threadKey(excludeThreadId);
+    return [...this.records.entries()]
+      .filter(
+        ([key, record]) =>
+          key !== excludedKey &&
+          record.updatedAt.getTime() >= since.getTime() &&
+          (record.agentSessionId !== undefined ||
+            record.inFlightEventId !== undefined),
+      )
+      .map(([, record]) => new Date(record.updatedAt.getTime()))
+      .sort((left, right) => left.getTime() - right.getTime());
   }
 
   async close(): Promise<void> {

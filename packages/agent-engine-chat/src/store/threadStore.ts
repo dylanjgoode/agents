@@ -47,16 +47,22 @@ export interface PendingDelivery {
   claimedAt?: Date;
 }
 
-export type TurnClaimStatus =
-  | "claimed"
-  | "duplicate"
-  | "busy"
-  | "pending_review";
+export type TurnClaim =
+  | {
+      status: "claimed";
+      record: ThreadRecord;
+      /**
+       * The thread as it was just before this claim, read in the same atomic
+       * operation, or null for a new thread. Claiming overwrites `updatedAt`,
+       * so this is the only reliable way to tell how long the thread was idle.
+       */
+      previousRecord: ThreadRecord | null;
+    }
+  | { status: "duplicate"; record: ThreadRecord }
+  | { status: "busy"; record: ThreadRecord }
+  | { status: "pending_review"; record: ThreadRecord };
 
-export interface TurnClaim {
-  status: TurnClaimStatus;
-  record: ThreadRecord;
-}
+export type TurnClaimStatus = TurnClaim["status"];
 
 export interface ThreadStore {
   get(threadId: string): Promise<ThreadRecord | null>;
@@ -90,6 +96,18 @@ export interface ThreadStore {
     deliveryId: string,
     claimId: string,
   ): Promise<boolean>;
+  /**
+   * Returns the `updatedAt` of every thread other than `excludeThreadId` that
+   * has run the agent, or is running it now, and was updated at or after
+   * `since`. Values are in ascending order.
+   *
+   * This reads existing thread metadata only; it is how callers measure how
+   * many agent sessions are active without keeping a separate counter.
+   */
+  listRecentSessionActivity(
+    since: Date,
+    excludeThreadId: string,
+  ): Promise<Date[]>;
   close(): Promise<void>;
 }
 
