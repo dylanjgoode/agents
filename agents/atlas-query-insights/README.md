@@ -142,11 +142,21 @@ When the limit is reached:
 - The workspace recovers on its own as the oldest tokens expire, within an
   hour of the burst. Redeploying doesn't help, because the redeployed
   processes need new tokens too.
+- The process that failed to start throws `McpTokenLimitError`. It names the
+  runtime (`agent` or `tool`) and the limit that refused the token: the
+  service account's token limit, or the token endpoint's rate limit of 50
+  requests per minute per service account and IP address.
+- Tool calls reuse the token their process minted at startup, so a running
+  session isn't affected until that token expires an hour later.
 
 To stay under the limit:
 
 - Use a separate MCP configuration for each environment, as described in
   [Configure](#configure).
+- Cap how many runs clients can start. The
+  [Atlas Explorer Slack bot's session limit](../../apps/atlas-explorer-slack-bot#session-limit)
+  shows one way: it refuses new conversations with a clear message before the
+  tokens run out.
 - Spread scheduled reports and evaluation runs over time. Each new run, and
   each message sent after the idle TTL, costs 2 tokens, so a burst
   of runs uses the limit quickly. Send follow-ups in the same session within
