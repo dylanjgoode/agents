@@ -118,7 +118,7 @@ The Atlas MCP server allows 100 active access tokens per service account, and ea
 Confirm it:
 
 ```bash
-agentengine logs --grep "Access Token limit" --since 1h
+agentengine logs --grep "access token" --since 1h
 ```
 
 Matches, together with `The agent did not become ready during startup.` on invoke, confirm the cause.
