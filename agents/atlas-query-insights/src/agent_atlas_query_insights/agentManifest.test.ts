@@ -16,7 +16,16 @@
 
 import { readFileSync } from "node:fs";
 
+import {
+  VERIFIED_PROVIDERS,
+  isVerifiedProvider,
+  providerManifestProblems,
+  switchProvider,
+  type VerifiedProvider,
+} from "@repo/agent-engine-core/testing";
 import { describe, expect, it } from "vitest";
+
+import { atlasQueryInsightsConfig } from "./config.js";
 
 const manifest = readFileSync(
   new URL("../../agent.yaml", import.meta.url),
@@ -60,6 +69,36 @@ describe("agent.yaml MCP authentication", () => {
       /api4\.ipify\.org|ifconfig\.me|icanhazip\.com/,
     );
   });
+});
+
+describe("agent.yaml model provider", () => {
+  const configured = atlasQueryInsightsConfig.llm.provider as string;
+
+  it("is a provider whose manifest requirements are known", () => {
+    expect(isVerifiedProvider(configured)).toBe(true);
+  });
+
+  it("declares the key and egress host for the provider in config.ts", () => {
+    expect(
+      providerManifestProblems(manifest, configured as VerifiedProvider),
+    ).toEqual([]);
+  });
+
+  it.each(Object.keys(VERIFIED_PROVIDERS) as VerifiedProvider[])(
+    "is consistent after switching config.ts and agent.yaml to %s",
+    (target) => {
+      const switched = switchProvider(
+        manifest,
+        configured as VerifiedProvider,
+        target,
+      );
+
+      expect(providerManifestProblems(switched, target)).toEqual([]);
+      expect(envExample).toMatch(
+        new RegExp(`^${VERIFIED_PROVIDERS[target].secret}=`, "m"),
+      );
+    },
+  );
 });
 
 describe("example MCP configuration", () => {
