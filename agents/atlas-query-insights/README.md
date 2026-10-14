@@ -244,6 +244,14 @@ Open the playground at http://localhost:3000. Stop the stack with
 Ask which slow queries matter on the cluster. The agent should explain
 the highest-impact shapes.
 
+## Talk from chat platforms
+
+[`@repo/agent-engine-chat`](../../packages/agent-engine-chat) connects any
+Agent Engine workspace, including `atlas-query-insights`, to Slack or other
+[Chat SDK](https://chat-sdk.dev) platforms.
+[`apps/atlas-explorer-slack-bot`](../../apps/atlas-explorer-slack-bot) is a
+reference Slack bot app built on it.
+
 ## How the report works
 
 1. The agent calls the Performance Advisor tool for one cluster to get slow
