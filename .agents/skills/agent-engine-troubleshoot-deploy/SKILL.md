@@ -103,10 +103,6 @@ Deploy succeeded but workspace doesn't respond?
 │  → agentengine status --verbose (identify unhealthy component)
 │  → Check logs for that component
 │
-├─ "The agent did not become ready during startup." when invoking?
-│  → Check: agentengine logs --grep "Access Token limit" --since 1h
-│  → If it matches, see "Access Token Limit Reached" below. Do NOT redeploy.
-│
 ├─ "code = Unimplemented" errors when invoking?
 │  → Fix: agentengine deploy (forces routing reconciliation)
 │
@@ -382,36 +378,6 @@ Your agent depends on the orchestration engine or memory server at startup. If t
 2. Identify and fix the underlying issue (usually one of issues 1–6 above)
 3. Verify platform operator logs show no new OE or memory-server errors
 4. Then redeploy: `agentengine deploy`
-
----
-
-### 10. Access Token Limit Reached
-
-**How to detect:**
-
-```bash
-agentengine logs --grep "Access Token limit" --since 1h
-```
-
-**What you'll see:**
-
-- Invoking the agent fails with `The agent did not become ready during startup.`
-- `agentengine status` can still show `ready`
-- Runtime logs contain `Access Token limit reached`
-
-**Why this happens:**
-
-The Atlas MCP server allows 100 active access tokens per service account, and each token lasts 1 hour. Everything that uses the same MCP configuration shares the limit: the Playground, the CLI, the Slack bot, and evaluation runs. A new conversation, or a message after the 10-minute idle TTL, starts new processes and mints 2 tokens. Follow-ups within the TTL mint nothing. Spare processes started ahead of demand can also mint tokens.
-
-**How to fix:**
-
-1. **Do NOT redeploy** — the new processes need tokens too, so it won't help and mints more
-2. Don't retry `agentengine invoke` in a loop
-3. Wait up to an hour. The workspace recovers as the oldest tokens expire
-4. Find what else uses the same MCP configuration (load tests, evaluation runs, the Slack bot) and spread it out, or give each environment its own MCP configuration
-5. If the logs show `HTTP 429` with `RATE_LIMITED` instead, it's a per-minute rate limit on token requests that clears within a minute. Wait and retry once.
-
-See the "Access token limit" section of the agent's README for capacity numbers.
 
 ---
 
