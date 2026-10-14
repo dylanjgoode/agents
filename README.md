@@ -226,16 +226,17 @@ how they're set up.
 
 ## Skills for your coding agent
 
-The repository includes skills in [`.agents/skills`](.agents/skills) that help a
-coding agent work with these agents and with Atlas Agent Engine:
+The repository includes skills in [`.agents/skills`](.agents/skills) for working
+with Atlas Explorer and Atlas Query Insights, plus general skills for Atlas
+Agent Engine:
 
 | Skill | Use it to |
 | ----- | --------- |
-| [`deploy-mongodb-agents`](.agents/skills/deploy-mongodb-agents) | Deploy Atlas Explorer or Atlas Query Insights: create the MCP configuration, set secrets, build, deploy, and diagnose a failed deploy. |
-| [`atlas-agent-engine`](.agents/skills/atlas-agent-engine) | Change how an agent is built or what it's allowed to do: `agent.yaml`, tool allowlists, approval middleware, and the agent libraries. |
-| [`atlas-agent-engine-docs`](.agents/skills/atlas-agent-engine-docs) | Answer questions about the `agentengine` CLI and the platform from current documentation. |
-| [`agent-engine-troubleshoot-deploy`](.agents/skills/agent-engine-troubleshoot-deploy) | Diagnose a failed or stuck deployment from status, deploy events, and runtime logs. |
-| [`agent-engine-feature-validations`](.agents/skills/agent-engine-feature-validations) | Check framework code (Python LangGraph and Google ADK) against the shapes the SDK supports before you build or deploy. |
+| [`deploy-mongodb-agents`](.agents/skills/deploy-mongodb-agents) | Deploy or troubleshoot Atlas Explorer or Atlas Query Insights: create the MCP configuration, set secrets, build, deploy, and diagnose a failed deploy or new conversations that fail to start. |
+| [`atlas-agent-engine`](.agents/skills/atlas-agent-engine) | Edit the TypeScript agents in this repo (`atlas-explorer`, `atlas-query-insights`): `agent.yaml`, tool allowlists, approval middleware, and the agent libraries. |
+| [`atlas-agent-engine-docs`](.agents/skills/atlas-agent-engine-docs) | Answer general questions about the `agentengine` CLI and platform from current documentation. |
+| [`agent-engine-troubleshoot-deploy`](.agents/skills/agent-engine-troubleshoot-deploy) | Diagnose a failed or stuck deployment for other Agent Engine workspaces from status, deploy events, and runtime logs (for Atlas Explorer or Atlas Query Insights, use `deploy-mongodb-agents`). |
+| [`agent-engine-feature-validations`](.agents/skills/agent-engine-feature-validations) | Check Python agent framework code (LangGraph and Google ADK) against the shapes the SDK supports before you build or deploy. |
 
 ## Contributing
 
