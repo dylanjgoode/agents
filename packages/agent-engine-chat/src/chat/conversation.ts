@@ -25,6 +25,12 @@ import type {
 import type { ThreadRecord, ThreadStore } from "../store/threadStore.js";
 import { buildReviewCard } from "./cards.js";
 import { defaultAgentChatMessages } from "./messages.js";
+import {
+  evaluateSessionHealth,
+  sessionWindowStart,
+  startsAgentSession,
+  type SessionHealth,
+} from "./sessionHealth.js";
 import type {
   ChatHandlerDependencies,
   ConversationSurface,
@@ -111,6 +117,7 @@ export async function handleConversationMessage(
     return;
   }
 
+  const previousRecord = claim.previousRecord;
   let activeRecord = claim.record;
   if (activeRecord.pendingDelivery) {
     const deliveryOutcome = await deliverPendingRecord(
@@ -139,6 +146,35 @@ export async function handleConversationMessage(
     }
     const { pendingDelivery: _delivery, ...withoutDelivery } = activeRecord;
     activeRecord = withoutDelivery;
+  }
+
+  const sessionHealth = await checkSessionHealth(
+    input.threadId,
+    previousRecord,
+    claimedAt,
+    dependencies,
+  );
+  if (sessionHealth.kind === "limit_reached") {
+    // Hand the turn back untouched. Restoring `updatedAt` keeps a rejected
+    // message from making this thread look like it has an active session.
+    await releaseTurn(
+      eventId,
+      activeRecord,
+      dependencies,
+      previousRecord?.updatedAt,
+    ).catch((error: unknown) => {
+      dependencies.logger?.error(
+        "Could not release a turn rejected by the session limit",
+        error,
+      );
+    });
+    await dependencies.conversation.post(
+      (dependencies.messages ?? defaultAgentChatMessages).sessionLimitReached(
+        dependencies.botName,
+        sessionHealth.retryAfterMs,
+      ),
+    );
+    return;
   }
 
   await dependencies.conversation
@@ -174,6 +210,7 @@ export async function handleConversationMessage(
       eventId,
       activeRecord,
       dependencies,
+      updatedAtAfterFailedTurn(previousRecord, claimedAt, dependencies),
     ).catch((storeError: unknown) => {
       dependencies.logger?.error(
         "Could not release failed conversation turn",
@@ -182,6 +219,9 @@ export async function handleConversationMessage(
       return false;
     });
     if (released) {
+      // Agent Engine reports every startup failure, including an exhausted
+      // access token limit, with the same generic text, so the failure can't
+      // be told apart here. The session limit above is the proactive guard.
       await dependencies.conversation.post(
         `${dependencies.botName} could not complete that request. Please try again in a moment.`,
       );
@@ -408,6 +448,7 @@ async function releaseTurn(
   eventId: string,
   record: ThreadRecord,
   dependencies: ChatHandlerDependencies,
+  updatedAt?: Date,
 ): Promise<boolean> {
   const {
     inFlightEventId: _eventId,
@@ -419,8 +460,75 @@ async function releaseTurn(
     ...(released.pendingDelivery
       ? { retentionState: "delivery_pending" as const }
       : { retentionState: "inactive" as const }),
-    updatedAt: dependencies.now?.() ?? new Date(),
+    updatedAt: updatedAt ?? dependencies.now?.() ?? new Date(),
   });
+}
+
+/**
+ * Decides whether this turn may start an agent session. Health comes from
+ * thread records the bot already stores: a turn starts a session when the
+ * thread has never run the agent or has been idle past the sandbox TTL, and it
+ * is refused when too many other threads have been active in the last hour.
+ * The turn is already claimed, so concurrent starters see each other; at worst
+ * two contenders for the last slot are both refused, never both admitted.
+ *
+ * Any failure to measure health lets the turn through. A startup that fails
+ * anyway is reported with Agent Engine's generic message, which does not say
+ * why, so this check is the only guard.
+ */
+async function checkSessionHealth(
+  threadId: string,
+  previousRecord: ThreadRecord | null,
+  now: Date,
+  dependencies: ChatHandlerDependencies,
+): Promise<SessionHealth> {
+  const sessionLimit = dependencies.sessionLimit;
+  if (
+    !sessionLimit ||
+    !startsAgentSession(previousRecord, now, sessionLimit.idleTtlMs)
+  ) {
+    return { kind: "available" };
+  }
+  try {
+    const activity = await dependencies.store.listRecentSessionActivity(
+      sessionWindowStart(now),
+      threadId,
+    );
+    return evaluateSessionHealth(activity, now, sessionLimit.limit);
+  } catch (error) {
+    dependencies.logger?.warn?.(
+      "Could not check the agent session limit",
+      error,
+    );
+    return { kind: "available" };
+  }
+}
+
+/**
+ * Picks the `updatedAt` to save on a thread whose agent call just failed.
+ *
+ * The bot reads `updatedAt` to decide whether a message continues a running
+ * agent session or starts a new one, and only messages that start a new
+ * session are checked against the hourly session limit. If a thread was idle
+ * and its new session failed to start, saving the current time would make the
+ * thread look active, so the user's retry would skip the limit. In that case
+ * this returns the thread's previous `updatedAt`. Otherwise it returns
+ * undefined, and `releaseTurn` saves the current time as usual.
+ */
+function updatedAtAfterFailedTurn(
+  previousRecord: ThreadRecord | null,
+  now: Date,
+  dependencies: ChatHandlerDependencies,
+): Date | undefined {
+  const sessionLimit = dependencies.sessionLimit;
+  if (
+    !sessionLimit ||
+    !previousRecord ||
+    !startsAgentSession(previousRecord, now, sessionLimit.idleTtlMs)
+  ) {
+    return undefined;
+  }
+  return previousRecord.updatedAt;
 }
 
 function replaceClaimedRecord(

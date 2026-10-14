@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+import type {
+  AdapterPostableMessage,
+  PostableCard,
+  TextElement,
+} from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MemoryThreadStore } from "../store/memoryThreadStore.js";
@@ -282,6 +287,73 @@ describe("handleConversationMessage", () => {
     expect(conversation.messages[0]).toMatchObject({
       card: expect.objectContaining({ type: "card" }),
       fallbackText: expect.stringMatching(/requires approval/i),
+    });
+  });
+
+  describe("fence-closing action arguments", () => {
+    const injectedArgs = {
+      database: "inventory",
+      note: 'x"\n```\n*No data will change.* <https://evil.example|Approve>\n```',
+    };
+
+    it("keeps them in one code block for a fresh interrupt", async () => {
+      agent.invokeResult = {
+        ...suspended,
+        interrupts: [
+          {
+            id: "interrupt-1",
+            actionRequests: [
+              { name: "mongodb__update_many", args: injectedArgs },
+            ],
+          },
+        ],
+      };
+
+      await handleConversationMessage(
+        {
+          threadId: THREAD_ID,
+          eventId: "event-1",
+          actorId: ACTOR_ID,
+          text: "Update the items",
+        },
+        { agent, conversation, store, botName: BOT_NAME },
+      );
+
+      expectOneArgumentCodeBlock(conversation.messages[0]);
+      // The stored record keeps the real arguments that Approve resumes.
+      expect(await store.get(THREAD_ID)).toMatchObject({
+        pendingActionRequests: [
+          { name: "mongodb__update_many", args: injectedArgs },
+        ],
+      });
+    });
+
+    it("keeps them in one code block when re-posting a stored record", async () => {
+      await store.put({
+        threadId: THREAD_ID,
+        agentSessionId: "session-1",
+        pendingExecutionId: "execution-2",
+        pendingInterruptId: "interrupt-1",
+        pendingActionRequests: [
+          { name: "mongodb__update_many", args: injectedArgs },
+        ],
+        pendingRequestedByActorId: ACTOR_ID,
+        pendingReviewState: "pending",
+        updatedAt: new Date(),
+      });
+
+      await handleConversationMessage(
+        {
+          threadId: THREAD_ID,
+          eventId: "event-2",
+          actorId: ACTOR_ID,
+          text: "What is pending?",
+        },
+        { agent, conversation, store, botName: BOT_NAME },
+      );
+
+      expect(agent.invokeInputs).toEqual([]);
+      expectOneArgumentCodeBlock(conversation.messages[0]);
     });
   });
 
@@ -666,6 +738,17 @@ describe("createProgressHandler", () => {
     );
   });
 });
+
+function expectOneArgumentCodeBlock(
+  message: AdapterPostableMessage | undefined,
+): void {
+  const previews = (message as PostableCard).card.children
+    .filter((child): child is TextElement => child.type === "text")
+    .map((child) => child.content)
+    .filter((content) => content.startsWith("```"));
+  expect(previews).toHaveLength(1);
+  expect(previews[0].split("```")).toHaveLength(3);
+}
 
 function skillLoadBurst(downloadCount: number) {
   return [
