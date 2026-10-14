@@ -139,11 +139,23 @@ Agents that can see production data need clear limits. Both agents set those
 limits from the start.
 
 - **Their own Atlas identity.** Each agent connects to Atlas with its own
-  programmatic identity for one Atlas project, and you choose its roles.
+  programmatic identity for one Atlas project, and you choose its roles. Atlas
+  authorizes that identity, not the person chatting with the agent, so anyone
+  who can reach an agent can use everything its roles allow. Give the agent
+  only the roles that all of its users should have, and be cautious about
+  giving any agent access to sensitive data. The Atlas MCP Server doesn't
+  currently support per-user sign-in (OIDC) for custom clients like these
+  agents.
 - **Read-only by default.** The example configurations grant read-only
   access. Atlas Explorer can be set up to write, with your approval for each
   write tool. Atlas Query Insights can't write.
 - **No shell access.** Neither agent can run shell commands in its sandbox.
+- **Prompt injection can't be fully prevented.** Text in your data or in chat
+  messages can contain instructions aimed at the model. The templates limit
+  what such text can do. The agent reads only what its roles allow, every
+  write needs approval, and the egress policy blocks traffic to hosts that
+  `agent.yaml` doesn't list. Treat content from untrusted sources as
+  untrusted, and review what an agent can reach before you deploy it.
 
 ## Why Atlas Agent Engine
 
@@ -217,12 +229,21 @@ how they're set up.
   [Access token limit](agents/atlas-explorer/README.md#access-token-limit)
   and the
   [Slack bot's session limit](apps/atlas-explorer-slack-bot/README.md#session-limit).
-- **Slack is an optional example.** You host the Slack bot yourself. Everyone
-  on its allowlist shares one Atlas identity instead of using their own Atlas
-  permissions. For details, see
+- **Slack is an optional example.** The Slack bot is a self-hosted example
+  built on [Chat SDK](https://chat-sdk.dev), so you can adapt it to other chat
+  platforms. See
   [Example: talk to Atlas Explorer from Slack](#example-talk-to-atlas-explorer-from-slack).
-  The bot is built on [Chat SDK](https://chat-sdk.dev), so you can adapt it to
-  other chat platforms.
+
+### Your data
+
+- **Traces and conversations include your data.** Agent Engine stores every
+  conversation and trace in your project. They can include database and
+  collection names, field names, and documents the agent reads. Only people
+  with access to your project can see them, and you are responsible for
+  governing that data. See
+  [Inspect traces](https://www.mongodb.com/docs/agentengine/manage/inspect-traces/).
+- **Your model provider sees prompts and tool results.** That includes query
+  results the agent reads. Choose a provider that meets your data policy.
 
 ## Contributing
 
@@ -231,6 +252,8 @@ To learn about the repository layout, local development, and tests, see
 
 ## Feedback
 
+We want to hear what worked and what didn't, including setup friction and
+use cases you'd like covered.
 [Open an issue](https://github.com/mongodb/agents/issues).
 
 ## License

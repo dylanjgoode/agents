@@ -229,7 +229,9 @@ Things to know:
 - The agent only names index fields that Performance Advisor suggested.
 - The model sees the raw Performance Advisor output as well as the redacted
   query shapes. The raw slow query log lines can include literal query
-  values, and those values are sent to your model provider.
+  values; those values are sent to your model provider and appear in Agent
+  Engine traces. You govern that data. See
+  [Your data](../../README.md#your-data).
 - `scope.projectId` and `scope.clusterName` in `config.ts` pin the agent to
   one project and cluster through its system prompt. Tool calls aren't
   filtered by that pin. The hard boundary is the one Atlas project that the
@@ -242,6 +244,24 @@ Things to know:
   human-in-the-loop path.
 - `aggregate` stays available for read pipelines. A pipeline that contains
   `$out` or `$merge` is rejected because this agent is read-only.
-- The MCP configuration belongs to one project, so the agent cannot reach
-  another.
-- The agent can recommend an index. It cannot create one.
+- Access belongs to the MCP configuration, not to each user. Everyone who can
+  run this agent sees the same data. Grant it only to people who may see that
+  data.
+- Slow query logs and Performance Advisor output can contain prompt-injection
+  text aimed at the model. The agent can't write, but injected text can still
+  skew its report, so review its recommendations before you act on them.
+
+### Roll back or shut down
+
+You own your deployment, so MongoDB can't roll it back for you. If you find a
+defect or a security problem:
+
+1. **Stop callers.** Pause any scheduled workflow or job that invokes the
+   agent.
+2. **Revoke credentials.** Delete the MCP client secret in Atlas.
+3. **Reissue and redeploy.** Create a new MCP client secret and update the
+   Agent Engine secrets. Then redeploy a known-good build with
+   `agentengine deploy --build-id <id>`, or build and deploy a fixed version
+   from `mongodb/agents`.
+4. **Check and restart.** Confirm the agent works with `agentengine invoke`,
+   then turn callers back on.

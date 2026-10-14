@@ -136,7 +136,8 @@ agentengine secret set OPENAI_API_KEY
 Atlas Explorer is read-only by default. The example MCP configuration grants
 read-only roles, and the agent hides every MCP tool that isn't on its
 read-only allowlist (`READ_ONLY_MCP_TOOLS` in
-[`agentPolicy.ts`](../../packages/atlas-explorer-agent/src/agentPolicy.ts)).
+[`agentPolicy.ts`](../../packages/atlas-explorer-agent/src/agentPolicy.ts);
+a bridge until Agent Engine preserves MCP tool annotations).
 
 Writes require two independent opt-ins. Either one remaining read-only is
 enough to prevent ordinary write-tool use:
@@ -152,7 +153,8 @@ enough to prevent ordinary write-tool use:
    add it.
 
 When writes are enabled, every MCP tool that isn't on the read-only allowlist
-is exposed, and each one pauses for approval before it runs. That includes
+is exposed, and each one pauses for approval before it runs (through LangChain
+HITL middleware and Agent Engine's persistent checkpointer). That includes
 tools the allowlist doesn't recognize, such as tools added to Atlas MCP
 later. These tools are not included in either mode:
 
@@ -302,24 +304,49 @@ can be reused with additional Chat SDK adapters.
 
 ## Safety and runtime notes
 
-- Atlas Explorer is read-only by default. The MCP configuration should use
-  `GROUP_DATA_ACCESS_READ_ONLY`, and `ALLOW_WRITE_OPERATIONS` should stay
-  unset or `"false"`. The application also hides non-read MongoDB MCP tools
-  unless that secret is enabled; remaining tools then require HITL
-  approval. This application allowlist is a bridge until Agent Engine preserves
-  MCP tool annotations.
-- When both write opt-ins are present, persistent mutations are protected by
-  LangChain HITL middleware using Agent Engine's persistent checkpointer and
-  suspend/resume adapter. This includes database writes; Atlas cluster
-  creation, upgrades, and pause/resume; sample dataset loads; project
-  creation; and Atlas Streams build, management, and teardown operations.
-  `mongodb__atlas_create_db_user` and `mongodb__atlas_create_access_list`
-  stay unavailable even then.
-- `aggregate` remains available for read-only exploration. A pipeline that
-  contains `$out` or `$merge` requires HITL approval.
-- Deep-agent file operations stay on Agent Engine's audited Tool Pod backend, but
-  the model is not given general-purpose shell execution that could read
+### Security model
+
+- **Read-only by default, with approval for writes.** Writes stay off unless
+  both opt-ins are set, and every write pauses for human approval. See
+  [How writes work](#how-writes-work).
+- **The MCP configuration decides access, not the user.** Atlas checks the
+  configuration's roles. It doesn't check who is chatting with the agent.
+  Everyone who can reach the agent has the same Atlas access. Grant only roles
+  that all of them should have, and be cautious about giving any agent access
+  to sensitive data.
+- **No general-purpose shell access.** Deep-agent file operations run on Agent
+  Engine's audited Tool Pod backend without shell execution that could read
   process credential files outside the filesystem sandbox.
+- **Prompt injection.** Data and chat messages can contain
+  instructions aimed at the model, and no defense fully prevents that. Impact
+  is bounded by the controls above and the egress policy in `agent.yaml`,
+  which blocks outbound traffic to unlisted hosts so injected text can't send
+  data elsewhere.
+- **Your data is in traces.** Conversations and traces in Agent Engine can
+  include database names, collection names, and sampled documents. They are
+  visible only inside your project, and you govern them. Your model provider
+  also receives the prompts and tool results.
+
+See [Safe by default](../../README.md#safe-by-default) for the repo-wide view.
+
+### Roll back or shut down
+
+You own your deployment, so MongoDB can't roll it back for you. If you find a
+defect or a security problem:
+
+1. **Stop callers.** Stop the
+   [Slack bot](../../apps/atlas-explorer-slack-bot/README.md#shut-down-the-bot)
+   and pause any scheduled workflow or job that invokes the agent.
+2. **Revoke credentials.** Delete the MCP client secret in Atlas.
+3. **Reissue and redeploy.** Create a new MCP client secret and update the
+   Agent Engine secrets. Then redeploy a known-good build with
+   `agentengine deploy --build-id <id>`, or build and deploy a fixed version
+   from `mongodb/agents`.
+4. **Check and restart.** Confirm the agent works with `agentengine invoke`,
+   then turn callers back on.
+
+### Runtime notes
+
 - MCP validation and query errors are returned to the model so it can correct
   arguments and retry. Graph interrupts are always rethrown.
 - OpenAI Responses tool definitions echoed in `response_metadata` are removed
