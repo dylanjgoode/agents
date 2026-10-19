@@ -148,20 +148,19 @@ with `agentengine secret set ANTHROPIC_BASE_URL`.
 
 ### Set a default cluster
 
-Set the cluster the agent reports on in
-`src/agent_atlas_query_insights/config.ts`:
+You can configure the Atlas Query Insights Agent to create reports on a default project and cluster. This lets you work with the agent with less back and forth.
 
-```ts
-scope: {
-  projectId: "<24-character Atlas project ID>",
-  clusterName: "<cluster name>",
-},
-```
-
-Then rebuild and redeploy. With both set, you can ask for a report without
-naming the cluster. If you leave them empty, the agent lists your projects
+If you leave the default config empty, the agent lists your projects
 and clusters and asks which one to use first.
 
+1. Set the cluster the agent reports on in
+   `src/agent_atlas_query_insights/config.ts`:
+
+   ```ts
+   scope: {
+     projectId: "<24-character Atlas project ID>",
+     clusterName: "<cluster name>",
+   },
 ### Access token limit
 
 The Atlas MCP server allows each service account at most 100 active access
