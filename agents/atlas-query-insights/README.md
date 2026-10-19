@@ -146,6 +146,22 @@ with `agentengine secret set ANTHROPIC_BASE_URL`.
 
 </details>
 
+### Set a default cluster
+
+Set the cluster the agent reports on in
+`src/agent_atlas_query_insights/config.ts`:
+
+```ts
+scope: {
+  projectId: "<24-character Atlas project ID>",
+  clusterName: "<cluster name>",
+},
+```
+
+Then rebuild and redeploy. With both set, you can ask for a report without
+naming the cluster. If you leave them empty, the agent lists your projects
+and clusters and asks which one to use first.
+
 ### Access token limit
 
 The Atlas MCP server allows each service account at most 100 active access
@@ -241,8 +257,29 @@ from `pnpm build` instead of rebuilding. After source changes, run
 Open the playground at http://localhost:3000. Stop the stack with
 `agentengine dev stop`.
 
-Ask which slow queries matter on the cluster. The agent should explain
-the highest-impact shapes.
+## Get a report
+
+Ask a question about slow queries. There's no separate command. The examples
+assume you set a [default cluster](#set-a-default-cluster).
+
+- "Which slow queries matter most?"
+- "Which slow queries matter most since Monday?"
+- "Look at slow queries on the `orders` collection."
+
+To ask about a cluster other than the default, name it in the question.
+
+Where to ask:
+
+- **Playground (local):** http://localhost:3000 after `agentengine dev up`.
+- **Deployed agent:** from this directory, run
+  `agentengine invoke "Which slow queries matter most?"`.
+- **Slack:** DM the bot or mention it in a channel. See
+  [Talk from chat platforms](#talk-from-chat-platforms).
+- **On a schedule:** post the question with Slack Workflow Builder. See
+  [Authorize scheduled Workflow Builder messages](../../apps/atlas-explorer-slack-bot/README.md#authorize-scheduled-workflow-builder-messages).
+
+Performance Advisor needs an M10 or larger cluster with recent slow queries.
+To create some on a test cluster, see [Seed slow queries](#seed-slow-queries).
 
 ## Talk from chat platforms
 
