@@ -35,7 +35,12 @@ Policy, prompts, and middleware live in
 
 ## Configure
 
-Requires Node.js 24 or newer.
+Requires:
+
+- Node.js 24 or newer.
+- An Atlas cluster on M10 or larger with recent slow queries. Performance
+  Advisor, which the agent reads from, needs both. To create slow queries on
+  a test cluster, see [Seed slow queries](#seed-slow-queries).
 
 ```bash
 cp .env.example .env
@@ -276,9 +281,6 @@ Where to ask:
   [Talk from chat platforms](#talk-from-chat-platforms).
 - **On a schedule:** post the question with Slack Workflow Builder. See
   [Authorize scheduled Workflow Builder messages](../../apps/atlas-explorer-slack-bot/README.md#authorize-scheduled-workflow-builder-messages).
-
-Performance Advisor needs an M10 or larger cluster with recent slow queries.
-To create some on a test cluster, see [Seed slow queries](#seed-slow-queries).
 
 ## Talk from chat platforms
 
