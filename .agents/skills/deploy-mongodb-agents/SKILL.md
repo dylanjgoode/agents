@@ -54,14 +54,29 @@ export GROUP_ID="<atlas-project-id>"
 
 read -r MCP_CONFIG_ID CLIENT_ID <<< "$(atlas api remoteMcpConfigurations createGroupMcpConfig \
   --groupId "$GROUP_ID" --file mcp-config.json -P mcp \
-  -o '{{.mcpConfigId}} {{.clientId}}')"
+  -o '{{.mcpConfigId}} {{.clientId}}' | awk 'NF && !/^warning:/' | tail -n 1)"
 
 echo "mcpConfigId: $MCP_CONFIG_ID"
 echo "clientId (ATLAS_MCP_CLIENT_ID): $CLIENT_ID"
-test -n "$MCP_CONFIG_ID" -a -n "$CLIENT_ID" || echo "create failed or response missing an ID"
+test -n "$MCP_CONFIG_ID" -a -n "$CLIENT_ID" || echo "IDs not found in the output; don't rerun"
 ```
 
-This uses the Atlas CLI's own output template, so `jq` isn't needed. Run it once. Creating the configuration again makes a duplicate.
+This uses the Atlas CLI's own output template, so `jq` isn't needed. The
+CLI can print a warning, such as `warning: using default API version`, and a
+blank line in the same output. The `awk` filter drops those lines, and
+`tail -n 1` keeps the last one left.
+
+Run it once. Creating the configuration again makes a duplicate that also
+grants access. If the IDs come back empty, the configuration may still have
+been created. Before any retry, look for it by its `mcpConfigName`:
+
+```bash
+atlas api remoteMcpConfigurations listGroupMcpConfigs \
+  --groupId "$GROUP_ID" -P mcp -o json
+```
+
+If it's there, take `mcpConfigId` and `clientId` from that entry instead of
+creating another.
 
 7. **User runs:** mint the client secret. The command prints the secret, so the user runs it in their own terminal and sends the output to a private file outside the repo. Give them this, with `<atlas-project-id>` and `<mcpConfigId>` filled in. Your shell variables don't carry over to their terminal. Pass `mcpConfigId`, not `clientId`:
 
@@ -74,6 +89,16 @@ atlas api remoteMcpConfigurations createGroupMcpSecret \
 
 The secret is returned once. Tell the user to open `~/atlas-mcp-secret.json` themselves, store the values in step 2, then delete the file. Don't read that file.
 
+When you hand this over, also tell them:
+
+- The file is in their home directory, outside the repo, so an editor's file
+  tree won't show it. They can open it with `cat ~/atlas-mcp-secret.json` in
+  their own terminal.
+- The value for `ATLAS_MCP_CLIENT_SECRET` is the `secret` field, which starts
+  with `mdb_sa_sk_`.
+- The `id` field is the secret's own ID, not the client ID. The client ID is
+  the `clientId` from step 6.
+
 ## 2. Store secrets on the platform
 
 **User runs** each of these. Each prompts for the value, which stays out of the conversation:
@@ -84,7 +109,12 @@ agentengine secret set ATLAS_MCP_CLIENT_SECRET --workspace-scope  # from ~/atlas
 agentengine secret set OPENAI_API_KEY
 ```
 
-`secret set` writes a **project-scoped** secret by default, shared by every workspace in the Agent Engine project. Atlas Explorer and Atlas Query Insights use the same names (`ATLAS_MCP_CLIENT_ID`, `ATLAS_MCP_CLIENT_SECRET`) but should have different MCP configurations, so a project-wide value would be overwritten by whichever agent was set up last. The two Atlas secrets above therefore use `--workspace-scope`. Neither the help text nor the published docs say which scope wins when both exist, so check with `agentengine secret list` after setting them.
+`secret set` writes a **project-scoped** secret by default, shared by every workspace in the Agent Engine project. Atlas Explorer and Atlas Query Insights use the same names (`ATLAS_MCP_CLIENT_ID`, `ATLAS_MCP_CLIENT_SECRET`) but should have different MCP configurations, so a project-wide value would be overwritten by whichever agent was set up last. The two Atlas secrets above therefore use `--workspace-scope`. Neither the help text nor the published docs say which scope wins when both exist, so check after setting them. Run both commands below. `secret list` shows only project-scoped secrets by default, so the two Atlas secrets appear only with `--workspace-scope`. Neither command prints secret values.
+
+```bash
+agentengine secret list
+agentengine secret list --workspace-scope
+```
 
 If the user uses another provider, they set that provider's key name instead of `OPENAI_API_KEY`. Secret names must match the names listed under `required_secrets` in `agent.yaml`. `MONGODB_URI` is injected, so don't set it. Afterwards the user deletes `~/atlas-mcp-secret.json`.
 
