@@ -28,6 +28,10 @@
  * `diagnostics.logRuntimeLifecycle` logs `[runtime-diag]` lines showing which
  * process serves each execution and when each process caches a new Atlas MCP
  * access token. Token values are never logged.
+ *
+ * `inputGuard` screens each user message before the model sees it: it redacts
+ * pasted secrets and refuses messages that are too long to screen. `mode` is
+ * "enforce", "monitor" (log only) or "off".
  */
 
 export const atlasExplorerConfig = {
@@ -41,5 +45,8 @@ export const atlasExplorerConfig = {
   },
   diagnostics: {
     logRuntimeLifecycle: true,
+  },
+  inputGuard: {
+    mode: "enforce",
   },
 } as const;
