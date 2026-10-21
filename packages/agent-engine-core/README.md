@@ -3,8 +3,11 @@
 Shared Agent Engine runtime used by the agent templates: LLM selection, tool
 selection, requester metadata, and LangGraph middleware.
 `redactSecretsMiddleware` strips common credentials from model replies and tool
-messages before they are checkpointed. `approveAggregateWritesMiddleware` requires HITL
-approval for `mongodb__aggregate` and `mongodb__aggregate_db` when the
+messages before they are checkpointed. `createInputRedactor` redacts secrets from
+the user's message in `prepareAgentInput`, and `createInputRefusalMiddleware`
+refuses messages that are too long to screen; see
+[Input guard](./src/inputGuard.ts). `approveAggregateWritesMiddleware`
+requires HITL approval for `mongodb__aggregate` and `mongodb__aggregate_db` when the
 pipeline contains `$out` or `$merge`. `rejectAggregateWritesMiddleware`
 rejects those calls for a read-only agent. `surfaceTokenMintFailures` wraps the
 app's `ready()`, where each agent and tool process mints its Atlas MCP access

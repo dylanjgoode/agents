@@ -153,6 +153,10 @@ limits from the start.
   write needs approval, and the egress policy blocks traffic to hosts that
   `agent.yaml` doesn't list. You decide what each agent can access, so review
   its roles and allowed hosts before you deploy it.
+- **Input guard.** Each agent redacts pasted credentials from the user's
+  message before the model sees it, and refuses messages that are too long to
+  screen. It doesn't screen tool output. See
+  [Input guard](packages/agent-engine-core/src/inputGuard.ts).
 
 ## Why MongoDB Atlas Agent Engine
 

@@ -32,6 +32,13 @@ export {
   type ClientUserExtras,
 } from "./clientUser.js";
 export {
+  INPUT_GUARD_PLACEHOLDER,
+  INPUT_GUARD_TOO_LONG,
+  createInputRefusalMiddleware,
+  createInputRedactor,
+  type InputRefusalOptions,
+} from "./inputGuard.js";
+export {
   type InputGuardConfig,
   type InputGuardMode,
 } from "./inputGuardConfig.js";
@@ -91,4 +98,7 @@ export {
   type KnowledgeToolHost,
   type WrappedKnowledgeTool,
 } from "./knowledgeTools.js";
-export { prepareAgentInput } from "./userRun.js";
+export {
+  prepareAgentInput,
+  type PrepareAgentInputOptions,
+} from "./userRun.js";

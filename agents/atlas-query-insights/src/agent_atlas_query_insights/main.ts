@@ -25,6 +25,8 @@ import {
   surfaceTokenMintFailures,
   buildLLM,
   buildSystemPrompt,
+  createInputRefusalMiddleware,
+  createInputRedactor,
   prepareAgentInput,
   recoverToolErrorsMiddleware,
   redactSecretsMiddleware,
@@ -47,7 +49,12 @@ process.env.AGENTIC_AGENT_WORKDIR ||= process.cwd();
 export const app = new App({ appName: "atlas-query-insights" });
 surfaceTokenMintFailures(app);
 registerKnowledgeTools(app);
-app.prepareAgentInput(prepareAgentInput);
+const redactMessage = createInputRedactor(
+  atlasQueryInsightsConfig.inputGuard.mode,
+);
+app.prepareAgentInput((input, ctx) =>
+  prepareAgentInput(input, ctx, { redactMessage }),
+);
 log("INFO", "App created; Atlas MCP tools will be discovered from agent.yaml");
 
 export const buildAgent = app.entrypoint(() => {
@@ -76,6 +83,9 @@ export const buildAgent = app.entrypoint(() => {
       backend: withoutShellExecution(new AgentEngineToolSandboxBackend()) as never,
       checkpointer: (saver ?? false) as never,
       middleware: [
+        createInputRefusalMiddleware({
+          mode: atlasQueryInsightsConfig.inputGuard.mode,
+        }),
         stampResumeClientUserMiddleware,
         stripToolEchoMiddleware,
         redactSecretsMiddleware,
