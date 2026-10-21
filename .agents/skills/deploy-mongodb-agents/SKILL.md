@@ -78,22 +78,28 @@ atlas api remoteMcpConfigurations listGroupMcpConfigs \
 If it's there, take `mcpConfigId` and `clientId` from that entry instead of
 creating another.
 
-7. **User runs:** mint the client secret. The command prints the secret, so the user runs it in their own terminal and sends the output to a private file outside the repo. Give them this, with `<atlas-project-id>` and `<mcpConfigId>` filled in. Your shell variables don't carry over to their terminal. Pass `mcpConfigId`, not `clientId`:
+7. **User runs:** mint the client secret. The command prints the secret, so the user runs it in their own terminal and sends the output to a private temporary file outside the repo. Give them this, with `<atlas-project-id>` and `<mcpConfigId>` filled in. Your shell variables don't carry over to their terminal. Pass `mcpConfigId`, not `clientId`:
 
 ```bash
-umask 077
+SECRET_FILE="$(mktemp)"
 atlas api remoteMcpConfigurations createGroupMcpSecret \
   --groupId "<atlas-project-id>" --mcpConfigId "<mcpConfigId>" \
-  --file mcp-secret-metadata.json -P mcp -o json > ~/atlas-mcp-secret.json
+  --file mcp-secret-metadata.json -P mcp -o json > "$SECRET_FILE"
+echo "$SECRET_FILE"
 ```
 
-The secret is returned once. Tell the user to open `~/atlas-mcp-secret.json` themselves, store the values in step 2, then delete the file. Don't read that file.
+`mktemp` creates an owner-only file with a random name in the system's
+temporary directory, so the secret isn't left in the home directory if the
+user forgets to delete it. A fixed name under `/tmp` would let another user
+on a shared machine create the file first.
+
+The secret is returned once. Tell the user to open the file themselves, store the values in step 2, then delete it. Don't read that file.
 
 When you hand this over, also tell them:
 
-- The file is in their home directory, outside the repo, so an editor's file
-  tree won't show it. They can open it with `cat ~/atlas-mcp-secret.json` in
-  their own terminal.
+- Keep the same terminal open for step 2. `$SECRET_FILE` holds the path, and
+  `echo` printed it in case they need it from another terminal. An editor's
+  file tree won't show the file. They can open it with `cat "$SECRET_FILE"`.
 - The value for `ATLAS_MCP_CLIENT_SECRET` is the `secret` field, which starts
   with `mdb_sa_sk_`.
 - The `id` field is the secret's own ID, not the client ID. The client ID is
@@ -105,7 +111,7 @@ When you hand this over, also tell them:
 
 ```bash
 agentengine secret set ATLAS_MCP_CLIENT_ID --workspace-scope      # the clientId from step 1
-agentengine secret set ATLAS_MCP_CLIENT_SECRET --workspace-scope  # from ~/atlas-mcp-secret.json
+agentengine secret set ATLAS_MCP_CLIENT_SECRET --workspace-scope  # the secret field in $SECRET_FILE
 agentengine secret set OPENAI_API_KEY
 ```
 
@@ -116,7 +122,7 @@ agentengine secret list
 agentengine secret list --workspace-scope
 ```
 
-If the user uses another provider, they set that provider's key name instead of `OPENAI_API_KEY`. Secret names must match the names listed under `required_secrets` in `agent.yaml`. `MONGODB_URI` is injected, so don't set it. Afterwards the user deletes `~/atlas-mcp-secret.json`.
+If the user uses another provider, they set that provider's key name instead of `OPENAI_API_KEY`. Secret names must match the names listed under `required_secrets` in `agent.yaml`. `MONGODB_URI` is injected, so don't set it. Afterwards the user deletes the file with `rm "$SECRET_FILE"`.
 
 ## 3. Enable writes (Atlas Explorer only, optional)
 
