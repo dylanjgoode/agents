@@ -21,11 +21,13 @@ import {
   SECRETS_NON_DISCLOSURE_RULE,
   TOOL_CONFIG_NON_DISCLOSURE_RULE,
   TOPIC_SCOPE_RULES,
+  describeDataAccess,
+  type DataAccessConfig,
 } from "@repo/agent-engine-core";
 
-import { describeScope, resolveScope, type ScopeInput } from "./scope.js";
-
 export const DEFAULT_AGENT_NAME = "Atlas Query Insights";
+export const NO_CLUSTER_CONFIGURED =
+  "No project or cluster is configured.";
 export const DEFAULT_MAX_QUERY_SHAPES = 3;
 export const PA_INDEX_SUGGESTION_CTA =
   "Show the suggested index definition and the mongosh command that would create it.";
@@ -105,7 +107,7 @@ const QUERY_SKILLS = [
 export interface SystemPromptOptions {
   name?: string;
   customInstructions?: string;
-  scope?: ScopeInput;
+  dataAccess?: DataAccessConfig;
   maxQueryShapes?: number;
 }
 
@@ -250,7 +252,7 @@ function resolveMaxQueryShapes(value: number | undefined): number {
 export function buildSystemPrompt(options: SystemPromptOptions = {}): string {
   const name = resolveAgentName(options.name);
   const maxQueryShapes = resolveMaxQueryShapes(options.maxQueryShapes);
-  const scope = describeScope(resolveScope(options.scope));
+  const scope = describeDataAccess(options.dataAccess) ?? NO_CLUSTER_CONFIGURED;
   const skills = QUERY_SKILLS.map((skill) => `- \`${skill}\``).join("\n");
   const custom = options.customInstructions?.trim();
 
@@ -283,7 +285,7 @@ ${scope}
 
 # Investigation workflow
 
-1. Resolve the scope. If no project or cluster is pinned, list projects and clusters and confirm the target before calling tools that need them.
+1. Choose the cluster. If the configuration doesn't name exactly one cluster, list the projects and clusters and ask the user which cluster to analyze before calling tools that need them.
 2. Call \`mongodb__atlas_get_performance_advisor\` with \`slowQueryLogs\` and \`suggestedIndexes\`. The tool returns at most 50 recent slow query logs. This is a sample, not a \`$queryStats\` aggregate over the query's lifetime. Say that in the summary.
 3. Group the slow logs into query shapes and rank those shapes yourself. Prefer shapes whose logs show more documents examined (\`docsExamined\`) and higher \`millis\`. There is no pre-sorted block to trust. Do not sum logs into ratios or lifetime totals.
 4. Analyze the top ${maxQueryShapes} shape(s). Repeated log lines of one shape count as one shape. When a shape is still unclear, you may call \`mongodb__collection_indexes\`, \`mongodb__collection_schema\`, or \`mongodb__explain\`. Do not compute new metrics. Cite the numbers printed on the slow log.

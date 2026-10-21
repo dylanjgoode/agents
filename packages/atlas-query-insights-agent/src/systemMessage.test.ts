@@ -16,12 +16,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { describeScope } from "./scope.js";
 import {
   DEFAULT_AGENT_NAME,
   DEFAULT_MAX_QUERY_SHAPES,
   PA_INDEX_SUGGESTION_CTA,
   ATLAS_QUERY_INSIGHTS_RULE_IDS,
+  NO_CLUSTER_CONFIGURED,
   buildSystemPrompt,
 } from "./systemMessage.js";
 
@@ -146,19 +146,23 @@ describe("buildSystemPrompt", () => {
     }
   });
 
-  it("injects the agent name, scope, shape limit, and custom instructions", () => {
-    const scope = { projectId: "507f1f77bcf86cd799439011", clusterName: "Cluster-1" };
+  it("injects the agent name, dataAccess scope, shape limit, and custom instructions", () => {
     const custom = buildSystemPrompt({
       name: "Ada",
       customInstructions: "Prefer the orders collection.",
-      scope,
+      dataAccess: {
+        "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
+      },
       maxQueryShapes: 5,
     });
 
     expect(prompt.startsWith(`You are ${DEFAULT_AGENT_NAME},`)).toBe(true);
-    expect(prompt).toContain(describeScope(undefined));
+    expect(prompt).toContain(NO_CLUSTER_CONFIGURED);
     expect(custom.startsWith("You are Ada,")).toBe(true);
-    expect(custom).toContain(describeScope(scope));
+    expect(custom).not.toContain(NO_CLUSTER_CONFIGURED);
+    expect(custom).toContain(
+      "- Project 64a1f3c2e8b94d0012c7a5e1: cluster example-test",
+    );
     expect(custom).toContain("top 5 shape(s)");
     expect(custom).toContain("## Custom instructions");
     expect(custom).toContain("Prefer the orders collection.");

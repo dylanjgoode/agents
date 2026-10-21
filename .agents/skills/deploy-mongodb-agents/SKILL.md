@@ -157,14 +157,27 @@ Ask the user to type the answers. Don't look them up and don't read their cluste
 Then edit `config.ts` and show the user the diff before saving:
 
 - **Atlas Explorer** (`src/agent_atlas_explorer/config.ts`): put the answers in `systemPrompt.customInstructions`, for example `Default cluster: prod-orders. The orders database holds customer orders. Ignore databases that start with test_.` The text is appended to the system prompt after the built-in rules, and the built-in safety rules still apply.
-- **Atlas Query Insights** (`src/agent_atlas_query_insights/config.ts`): set `scope.clusterName` and `scope.projectId`. A set `projectId` must be a 24-character hex ID, and `clusterName` must be an Atlas cluster name. Leave a field empty to let the agent work it out.
+- **Either agent** (`config.ts`): to limit the agent to a cluster, set
+  `dataAccess`. The project ID must be a 24-character hex ID.
+
+  ```ts
+  dataAccess: {
+    // Only the prod-orders cluster in this project.
+    "<projectId>": { clusterNames: ["prod-orders"] },
+    // Every cluster in this project.
+    "<otherProjectId>": {},
+  } satisfies DataAccessConfig,
+  ```
+
+  Leave `dataAccess` as `{}` for no restriction. The agent can then use
+  every project and cluster that the MCP configuration can reach.
 
 Atlas Explorer users can also add a data map: a list of databases, collections and fields so the agent can skip exploring. It goes stale, so offer it only if the user asks or says they'd like it, and only if this coding agent already has the MongoDB MCP connected. Then follow [references/data-map.md](references/data-map.md).
 
 Rules:
 
 - The text goes into the system prompt and into git. Never include credentials, connection strings, or personal data. Keep it short and factual.
-- `scope` pins the agent through its prompt only. It doesn't filter tool calls. The hard boundary is still the Atlas project the MCP configuration belongs to.
+- `dataAccess` only changes the system prompt. It doesn't filter tool calls. Atlas still limits the agent to the one project and the roles of its MCP configuration, whatever `dataAccess` says.
 - This is a code change, so the agent needs a rebuild (`pnpm build`) and a deploy to pick it up. It doesn't change what the agent is allowed to do.
 
 ## 6. Check before deploying

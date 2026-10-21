@@ -159,6 +159,29 @@ describe("system prompt modes", () => {
       WRITE_ENABLED_SYSTEM_PROMPT,
     );
   });
+
+  it("adds a Scope section only when dataAccess lists projects", () => {
+    expect(buildSystemPrompt(false, { dataAccess: {} })).toBe(
+      READ_ONLY_SYSTEM_PROMPT,
+    );
+
+    const prompt = buildSystemPrompt(false, {
+      dataAccess: {
+        "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
+      },
+      customInstructions: "Be brief.",
+    });
+    expect(prompt.startsWith(READ_ONLY_SYSTEM_PROMPT)).toBe(true);
+    expect(prompt).toContain(
+      "## Scope\n\nAccess is limited to these Atlas projects and clusters.",
+    );
+    expect(prompt).toContain(
+      "- Project 64a1f3c2e8b94d0012c7a5e1: cluster example-test",
+    );
+    expect(prompt.indexOf("## Scope")).toBeLessThan(
+      prompt.indexOf("## Custom instructions"),
+    );
+  });
 });
 
 const UNTRUSTED_TOOL_OUTPUT_RULE =
