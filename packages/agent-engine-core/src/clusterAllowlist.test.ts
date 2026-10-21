@@ -167,6 +167,58 @@ describe("guardClusterCall", () => {
     expect((await run(call("mongodb__find", {}), mixed)).ran).toBe(true);
   });
 
+  describe("write-mode cluster arguments", () => {
+    const streamsConnection = (clusterName?: string) => ({
+      projectId: PROJECT,
+      resource: "connection",
+      workspaceName: "ws",
+      connectionName: "conn",
+      connectionType: "Cluster",
+      connectionConfig: clusterName ? { clusterName } : {},
+    });
+    const updateConnection = (connectionConfig: object) => ({
+      projectId: PROJECT,
+      workspaceName: "ws",
+      action: "update-connection",
+      resourceName: "conn",
+      connectionConfig,
+    });
+
+    it.each([
+      ["mongodb__atlas_create_free_cluster", { projectId: PROJECT, name: "example-prod", region: "US_EAST_1" }, "Cluster example-prod"],
+      ["mongodb__atlas_create_free_cluster", { projectId: PROJECT, region: "US_EAST_1" }, "needs a clusterName"],
+      ["mongodb__atlas_pause_resume_cluster", { projectId: PROJECT, clusterName: "example-prod" }, "Cluster example-prod"],
+      ["mongodb__atlas_upgrade_cluster", { projectId: PROJECT }, "needs a clusterName"],
+      ["mongodb__atlas_streams_build", streamsConnection("example-prod"), "Cluster example-prod"],
+      ["mongodb__atlas_streams_build", streamsConnection(), "needs connectionConfig.clusterName"],
+      ["mongodb__atlas_streams_manage", updateConnection({ clusterName: "example-prod" }), "Cluster example-prod"],
+    ])("rejects %s with %j", async (name, args, message) => {
+      const { result, ran } = await run(call(name, args));
+      expect(ran).toBe(false);
+      expect(result).toMatchObject({
+        status: "error",
+        content: expect.stringContaining(message),
+      });
+    });
+
+    it.each([
+      ["mongodb__atlas_create_free_cluster", { projectId: PROJECT, name: "example-test", region: "US_EAST_1" }],
+      ["mongodb__atlas_streams_build", streamsConnection("example-staging")],
+      ["mongodb__atlas_streams_build", { projectId: PROJECT, resource: "workspace", workspaceName: "ws" }],
+    ])("runs %s with %j", async (name, args) => {
+      expect((await run(call(name, args))).ran).toBe(true);
+    });
+
+    // An existing connection's cluster is not in the arguments, so
+    // dataAccess cannot check where it points.
+    it("cannot check an update that does not name a cluster", async () => {
+      const update = updateConnection({
+        dbRoleToExecute: { role: "read", type: "BUILT_IN" },
+      });
+      expect((await run(call("mongodb__atlas_streams_manage", update))).ran).toBe(true);
+    });
+  });
+
   it("rejects cluster and database tools when no project allows a cluster", async () => {
     const noClusters = { [PROJECT]: { clusterNames: [] } } satisfies DataAccessConfig;
 

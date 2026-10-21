@@ -41,6 +41,10 @@ const CLUSTER_TOOLS: ReadonlySet<string> = new Set([
   "mongodb__atlas_connect_cluster",
   "mongodb__atlas_inspect_cluster",
   "mongodb__atlas_get_performance_advisor",
+  "mongodb__atlas_create_free_cluster",
+  "mongodb__atlas_create_cluster",
+  "mongodb__atlas_pause_resume_cluster",
+  "mongodb__atlas_upgrade_cluster",
 ]);
 
 const MAX_ARGUMENT_DEPTH = 20;
@@ -97,12 +101,25 @@ export function findDataAccessViolation({
     if (error instanceof ArgumentsTooDeepError) return error.message;
     throw error;
   }
+  // create_free_cluster names the new cluster in `name`, not `clusterName`.
+  const newClusterName =
+    name === "mongodb__atlas_create_free_cluster"
+      ? stringArg(args.name)
+      : undefined;
+  if (newClusterName) clusterNames.push(newClusterName);
   for (const clusterName of clusterNames) {
     const violation = findClusterViolation({ projectId, project, clusterName });
     if (violation) return violation;
   }
   if (clusterNames.length === 0 && CLUSTER_TOOLS.has(name)) {
     return `${name} needs a clusterName from the dataAccess allowlist.`;
+  }
+  if (
+    clusterNames.length === 0 &&
+    name === "mongodb__atlas_streams_build" &&
+    args.connectionType === "Cluster"
+  ) {
+    return `${name} needs connectionConfig.clusterName from the dataAccess allowlist.`;
   }
   return undefined;
 }
