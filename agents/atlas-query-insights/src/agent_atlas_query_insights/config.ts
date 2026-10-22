@@ -27,6 +27,29 @@ import type {
  * Leave `dataAccess` as `{}` for no restriction: every project and cluster
  * the MCP configuration can reach. Otherwise map each allowed 24-hex project
  * id to `{}` (all its clusters) or `{ clusterNames: [...] }`.
+ *
+ * `databaseNames` limits the databases the agent may use, across every
+ * allowed cluster:
+ *
+ * - Leave it `undefined` to allow every database.
+ * - `[]` allows no databases.
+ * - Otherwise list strings (`"orders"`) and regular expressions
+ *   (`/^tenant_\d+$/`).
+ *   - A string must equal the database name.
+ *   - A regular expression is tested against the name as written, so anchor
+ *     it to match the whole name. It can only use the `i` and `u` flags.
+ *
+ * `databaseNames` is a guardrail in the agent. The hard boundary is the MCP
+ * access token, which can't be limited to specific databases today. What
+ * `databaseNames` covers:
+ *
+ * - Checked: each tool call's `database` argument, and the target database of
+ *   `$out` and `$merge` in the pipeline of `aggregate`, `aggregate_db`, and
+ *   `explain`.
+ * - Not checked: other parts of an aggregation pipeline.
+ * - Not filtered: tool results, so the agent can still see names of
+ *   databases it may not use.
+ *
  * `maxQueryShapes` is how many shapes the report covers.
  *
  * `inputGuard` screens each user message before the model sees it: it redacts
@@ -35,7 +58,7 @@ import type {
  * {@link createInputRedactor} and {@link createInputRefusalMiddleware}.
  */
 
-import type { DataAccessConfig } from "@repo/atlas-query-insights-agent";
+import type { AtlasQueryInsightsConfig } from "@repo/atlas-query-insights-agent";
 
 export const atlasQueryInsightsConfig = {
   llm: {
@@ -46,9 +69,10 @@ export const atlasQueryInsightsConfig = {
     name: "",
     customInstructions: "",
   },
-  dataAccess: {} satisfies DataAccessConfig,
+  dataAccess: {},
+  databaseNames: undefined,
   maxQueryShapes: 3,
   inputGuard: {
     mode: "enforce",
   },
-} as const;
+} as const satisfies AtlasQueryInsightsConfig;

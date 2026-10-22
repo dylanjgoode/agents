@@ -37,6 +37,7 @@ export {
   clusterAllowlistMiddleware,
   createInputRefusalMiddleware,
   createInputRedactor,
+  databaseAllowlistMiddleware,
   prepareAgentInput,
   recoverToolErrorsMiddleware,
   redactSecretsMiddleware,
@@ -46,8 +47,10 @@ export {
   withRequesterMetadata,
   withoutShellExecution,
   type DataAccessConfig,
+  type DatabaseNamesConfig,
   type InputGuardConfig,
 } from "@repo/agent-engine-core";
+export type { AtlasQueryInsightsConfig } from "./agentConfig.js";
 export {
   ATLAS_QUERY_INSIGHTS_MCP_TOOLS,
   selectAtlasQueryInsightsTools,

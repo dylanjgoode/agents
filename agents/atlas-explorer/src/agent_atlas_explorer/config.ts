@@ -33,6 +33,30 @@ import type {
  * configuration can reach. Otherwise map each allowed 24-hex project id to
  * `{}` (all its clusters) or `{ clusterNames: [...] }`.
  *
+ * `databaseNames` limits the databases the agent may use, across every
+ * allowed cluster:
+ *
+ * - Leave it `undefined` to allow every database.
+ * - `[]` allows no databases.
+ * - Otherwise list strings (`"orders"`) and regular expressions
+ *   (`/^tenant_\d+$/`).
+ *   - A string must equal the database name.
+ *   - A regular expression is tested against the name as written, so anchor
+ *     it to match the whole name. It can only use the `i` and `u` flags.
+ *
+ * `databaseNames` is a guardrail in the agent. The hard boundary is the MCP
+ * access token, which can't be limited to specific databases today. What
+ * `databaseNames` covers:
+ *
+ * - Checked: each tool call's `database` argument, and the target database of
+ *   `$out` and `$merge` in the pipeline of `aggregate`, `aggregate_db`, and
+ *   `explain`.
+ * - Not checked: other parts of an aggregation pipeline.
+ * - Not checked: cluster-level `aggregate_db` stages such as `$currentOp`
+ *   and `$queryStats`, which report activity on every database.
+ * - Not filtered: tool results, so the agent can still see names of
+ *   databases it may not use.
+ *
  * `diagnostics.logRuntimeLifecycle` logs `[runtime-diag]` lines showing which
  * process serves each execution and when each process caches a new Atlas MCP
  * access token. Token values are never logged.
@@ -43,7 +67,7 @@ import type {
  * {@link createInputRedactor} and {@link createInputRefusalMiddleware}.
  */
 
-import type { DataAccessConfig } from "@repo/atlas-explorer-agent";
+import type { AtlasExplorerConfig } from "@repo/atlas-explorer-agent";
 
 export const atlasExplorerConfig = {
   llm: {
@@ -54,11 +78,12 @@ export const atlasExplorerConfig = {
     name: "",
     customInstructions: "",
   },
-  dataAccess: {} satisfies DataAccessConfig,
+  dataAccess: {},
+  databaseNames: undefined,
   diagnostics: {
     logRuntimeLifecycle: true,
   },
   inputGuard: {
     mode: "enforce",
   },
-} as const;
+} as const satisfies AtlasExplorerConfig;

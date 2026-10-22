@@ -21,7 +21,7 @@ agents/atlas-query-insights/
 ├── skills/                            # query optimizer, schema, search, querying, connection
 └── src/agent_atlas_query_insights/
     ├── main.ts                        # Agent Engine entrypoint
-    └── config.ts                      # LLM, prompt persona, dataAccess, and shape limit
+    └── config.ts                      # LLM, prompt persona, dataAccess, databaseNames, and shape limit
 ```
 
 Project memory settings live in the repository root
@@ -56,7 +56,8 @@ Set these local secrets in `.env`:
 
 Non-secret settings live in `config.ts`: the model, how the agent
 introduces itself, optional custom instructions, and an optional
-`dataAccess` map of allowed projects and clusters.
+`dataAccess` map of allowed projects and clusters and an optional
+`databaseNames` list of allowed databases.
 
 Create a **project-level** MongoDB MCP configuration before starting the
 agent. Atlas Admin API still calls a project a group, so this uses
@@ -326,6 +327,22 @@ Things to know:
   and clusters, and `clusterAllowlistMiddleware` rejects tool calls that
   name any other project or cluster. This is a guardrail in the agent. The
   hard boundary is the one Atlas project that the MCP configuration belongs to.
+- `databaseNames` in `config.ts` limits the agent to the listed databases on
+  every allowed cluster. List strings (`"orders"`) and regular expressions
+  (`/^tenant_\d+$/`). A string must equal the database name. A regular
+  expression is tested as written, so anchor it (`/^orders$/`) to match the
+  whole name. Leave it as `undefined` to allow every database. `[]` allows
+  none. The system prompt names the allowed databases, and
+  `databaseAllowlistMiddleware` rejects tool calls whose `database` argument
+  does not match. This is a guardrail in the agent. The hard
+  boundary is the MCP configuration's project and roles, and Atlas can't
+  limit that token to specific databases yet. Known gaps:
+  - Tool results are not filtered. Slow query logs can still name other
+    databases in their `db.collection` namespaces. The agent cannot read
+    their data.
+  - Only the `database` argument and `$out` and `$merge` targets in
+    pipelines are checked. Other parts of an aggregation pipeline are not
+    inspected.
 
 ## Safety
 

@@ -22,7 +22,9 @@ import {
   TOOL_CONFIG_NON_DISCLOSURE_RULE,
   TOPIC_SCOPE_RULES,
   describeDataAccess,
+  describeDatabaseNames,
   type DataAccessConfig,
+  type DatabaseNamesConfig,
 } from "@repo/agent-engine-core";
 
 const DEFAULT_AGENT_NAME = "Atlas Explorer";
@@ -63,6 +65,7 @@ export type SystemPromptOptions = {
   name?: string;
   customInstructions?: string;
   dataAccess?: DataAccessConfig;
+  databaseNames?: DatabaseNamesConfig;
 };
 
 function resolveAgentName(name?: string): string {
@@ -135,7 +138,17 @@ export function buildSystemPrompt(
 ): string {
   const name = resolveAgentName(options.name);
   const base = writeEnabled ? writeEnabledPrompt(name) : readOnlyPrompt(name);
-  const scope = describeDataAccess(options.dataAccess);
-  const scoped = scope ? `${base}\n## Scope\n\n${scope}\n` : base;
-  return appendCustomInstructions(scoped, options.customInstructions);
+  const clusterScope = describeDataAccess(options.dataAccess);
+  if (!clusterScope && options.databaseNames === undefined) {
+    return appendCustomInstructions(base, options.customInstructions);
+  }
+
+  const databaseScope = describeDatabaseNames(options.databaseNames);
+  const scope = clusterScope
+    ? `${clusterScope}\n\n${databaseScope}`
+    : databaseScope;
+  return appendCustomInstructions(
+    `${base}\n## Scope\n\n${scope}\n`,
+    options.customInstructions,
+  );
 }

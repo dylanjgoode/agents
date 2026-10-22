@@ -21,6 +21,7 @@ export {
   clusterAllowlistMiddleware,
   createInputRefusalMiddleware,
   createInputRedactor,
+  databaseAllowlistMiddleware,
   formatToolErrorForAgent,
   isAgentEngineResume,
   parseClientUserPayload,
@@ -42,9 +43,11 @@ export {
   type ClientUser,
   type ClientUserExtras,
   type DataAccessConfig,
+  type DatabaseNamesConfig,
   type InputGuardConfig,
   type Requester,
 } from "@repo/agent-engine-core";
+export type { AtlasExplorerConfig } from "./agentConfig.js";
 export {
   HIGH_RISK_MCP_TOOLS,
   mutativeInterruptOn,

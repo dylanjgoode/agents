@@ -223,10 +223,9 @@ to keep **Atlas Explorer**. Set `systemPrompt.customInstructions` to append
 operator-specific guidance after the built-in operating rules. Leave that
 field empty to skip extra prompt text. Built-in safety rules still apply.
 
-## Limit projects and clusters
+## Limit projects, clusters, and databases
 
-Set `dataAccess` in `config.ts` to limit the agent to specific Atlas projects
-and clusters:
+Two optional settings in `config.ts` narrow what the agent may use:
 
 ```ts
 dataAccess: {
@@ -234,44 +233,60 @@ dataAccess: {
   "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
   // Every cluster in this project.
   "65c3d9e07f21ab4408d6e3f2": {},
-},
+} satisfies DataAccessConfig,
+// Only these databases, on every allowed cluster.
+databaseNames: ["orders", /^tenant_\d+$/] satisfies DatabaseNamesConfig,
 ```
 
-- `clusterNames: ["a", "b"]` allows only those clusters in the project.
-- `{}` for a project allows every cluster in it.
-- `clusterNames: []` allows the project but none of its clusters.
-- `dataAccess: {}` limits nothing. The agent can use every project and
-  cluster the MCP configuration can reach.
+| Scope | Allow all | Allow none | Allow some |
+| --- | --- | --- | --- |
+| Projects | `dataAccess: {}` | Not available | One key per 24-hex project ID |
+| Clusters in a project | `{}` | `{ clusterNames: [] }` | `{ clusterNames: ["a"] }` |
+| Databases | `databaseNames: undefined` | `databaseNames: []` | Strings and regular expressions |
+
+- A string must equal the database name. A regular expression is tested
+  against the name as written, so `/orders/` also allows `orders_archive`.
+  Only the `i` and `u` flags are accepted.
+- `databaseNames` applies to every allowed cluster. It can't be set per
+  cluster, because tools that read data identify the cluster only by a
+  connection ID.
+- These settings narrow what the MCP configuration can reach. They never
+  widen it.
 
 ### What the agent enforces
 
-- The system prompt lists the allowed projects and clusters in a `## Scope`
-  section.
-- `clusterAllowlistMiddleware` rejects any tool call that names a project or
-  cluster outside `dataAccess`.
-- The prompt also warns that project and cluster lists in tool results can
-  include entries outside `dataAccess`. Using one returns an error.
-- With writes enabled, creating, pausing, or upgrading a cluster must name an
-  allowed cluster. Creating a project is rejected.
+- The system prompt lists the allowed projects, clusters, and databases in a
+  `## Scope` section.
+- `clusterAllowlistMiddleware` rejects tool calls that name a project or
+  cluster outside `dataAccess`. With writes enabled, creating, pausing, or
+  upgrading a cluster must name an allowed cluster, and creating a project is
+  rejected.
+- `databaseAllowlistMiddleware` rejects tool calls whose `database` argument
+  is outside `databaseNames`. For `aggregate`, `aggregate_db`, and `explain`,
+  it also checks the target database of `$out` and `$merge` in the pipeline.
+  It does not scan filters or documents.
+- A rejected call returns an error to the agent, so it can correct itself.
 
 ### What it cannot enforce
 
-The check runs in the agent and only reads the arguments of each tool call.
-Atlas still limits the agent to the project and roles of its MCP
-configuration. `dataAccess` can narrow that access but never widen it.
+These checks run in the agent and only read tool call arguments, so they are
+guardrails. The hard boundary is the project and roles of the MCP
+configuration. Atlas can't limit that token to specific clusters or databases
+yet, so a call these checks miss is limited only by the token's project and
+roles.
 
-**Existing Atlas Stream Processing connections.** This applies only when
-writes are enabled. A connection is a saved link from a stream workspace to a
-data source, such as a cluster.
-
-- When the agent creates a connection to a cluster, it must name an allowed
-  cluster, so the check works.
-- When the agent updates or uses a connection that already exists, the call
-  names the connection, not its cluster. The check cannot tell where it
-  points.
-- If an existing connection points at a cluster outside `dataAccess`, the
-  agent can still change it, or start a processor that reads or writes
-  through it.
+- **Tool results are not filtered.** List tools can still show projects,
+  clusters, and databases the agent may not use. The prompt warns the agent
+  that using one returns an error.
+- **`aggregate_db` reports on every database.** Cluster-level stages such as
+  `$currentOp` and `$queryStats` cover activity on every database, not only
+  the one named in the `database` argument.
+- **Existing Atlas Stream Processing connections** (writes enabled only). A
+  connection is a saved link from a stream workspace to a data source, such
+  as a cluster. Creating one must name an allowed cluster. Updating or using
+  an existing one names only the connection, so if it points at a cluster
+  outside `dataAccess`, the agent can still change it or start a processor
+  that reads or writes through it.
 
 ## MCP credential lifecycle
 

@@ -184,6 +184,35 @@ describe("system prompt modes", () => {
       prompt.indexOf("## Custom instructions"),
     );
   });
+
+  it("adds the allowed databases to the Scope section only when databaseNames is set", () => {
+    expect(buildSystemPrompt(false, { databaseNames: undefined })).toBe(
+      READ_ONLY_SYSTEM_PROMPT,
+    );
+
+    const prompt = buildSystemPrompt(false, {
+      dataAccess: {
+        "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
+      },
+      databaseNames: ["orders", /^tenant_\d+$/],
+    });
+    expect(prompt).toContain("## Scope\n\nAccess is limited to these Atlas projects");
+    expect(prompt).toContain("Access is limited to these databases.");
+    expect(prompt).toContain("- orders");
+    expect(prompt).toContain("/^tenant_\\d+$/");
+    expect(prompt).toContain("Database lists in tool results can include");
+
+    const clustersOnly = buildSystemPrompt(false, {
+      dataAccess: {
+        "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
+      },
+    });
+    expect(clustersOnly).toContain("You can use all databases.");
+
+    const databasesOnly = buildSystemPrompt(false, { databaseNames: ["orders"] });
+    expect(databasesOnly).toContain("## Scope\n\nAccess is limited to these databases.");
+    expect(databasesOnly).not.toContain("Atlas projects and clusters");
+  });
 });
 
 const UNTRUSTED_TOOL_OUTPUT_RULE =

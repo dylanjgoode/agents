@@ -230,6 +230,7 @@ describe("Atlas Explorer graph assembly", () => {
           expect.objectContaining({ name: "clusterAllowlist" }),
           harness.hitlMiddleware,
           approveAggregateWritesMiddleware,
+          expect.objectContaining({ name: "databaseAllowlist" }),
           expect.objectContaining({ name: "recoverToolErrors" }),
         ],
       }),
