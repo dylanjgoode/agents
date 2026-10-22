@@ -14,28 +14,11 @@
  * limitations under the License.
  */
 
-import type {
-  DataAccessConfig,
-  DatabaseNamesConfig,
-  DefaultDataConfig,
-  InputGuardConfig,
-} from "@repo/agent-engine-core";
+import type { SharedAgentConfig } from "@repo/agent-engine-core";
 
 /** The shape of `atlasExplorerConfig` in the agent's `config.ts`. */
-export interface AtlasExplorerConfig {
-  readonly llm: {
-    readonly provider: string;
-    readonly model: string;
-  };
-  readonly systemPrompt: {
-    readonly name: string;
-    readonly customInstructions: string;
-    readonly defaultData: DefaultDataConfig;
-  };
-  readonly dataAccess: DataAccessConfig;
-  readonly databaseNames?: DatabaseNamesConfig;
+export interface AtlasExplorerConfig extends SharedAgentConfig {
   readonly diagnostics: {
     readonly logRuntimeLifecycle: boolean;
   };
-  readonly inputGuard: InputGuardConfig;
 }

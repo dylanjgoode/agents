@@ -242,31 +242,36 @@ defaultData: {
 
 The prompt passes `projectId` and `clusterName` under those names, and
 passes `databaseName` and `collectionName` as the `database` and
-`collection` arguments. This is separate from `dataAccess` and
-`databaseNames`. A project or cluster outside `dataAccess`, or a database
-outside `databaseNames`, still fails when the agent uses it.
+`collection` arguments. This is separate from `dataAccess`. A project or
+cluster outside `dataAccess.projects`, or a database outside
+`dataAccess.databaseNames`, still fails when the agent uses it.
 
 ## Limit projects, clusters, and databases
 
-Two optional settings in `config.ts` narrow what the agent may use:
+`dataAccess` in `config.ts` narrows what the agent may use. It has two optional
+keys:
 
 ```ts
 dataAccess: {
-  // Only these clusters in this project.
-  "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
-  // Every cluster in this project.
-  "65c3d9e07f21ab4408d6e3f2": {},
+  // Only these clusters, in this project.
+  projects: {
+    "64a1f3c2e8b94d0012c7a5e1": { clusterNames: ["example-test"] },
+    // Every cluster in this project.
+    "65c3d9e07f21ab4408d6e3f2": {},
+  },
+  // Only these databases, on every allowed cluster.
+  databaseNames: ["orders", /^tenant_\d+$/],
 } satisfies DataAccessConfig,
-// Only these databases, on every allowed cluster.
-databaseNames: ["orders", /^tenant_\d+$/] satisfies DatabaseNamesConfig,
 ```
 
 | Scope | Allow all | Allow none | Allow some |
 | --- | --- | --- | --- |
-| Projects | `dataAccess: {}` | Not available | One key per 24-hex project ID |
+| Projects (`projects`) | Omit `projects`, or `dataAccess: {}` | Not available | One key per 24-hex project ID |
 | Clusters in a project | `{}` | `{ clusterNames: [] }` | `{ clusterNames: ["a"] }` |
-| Databases | `databaseNames: undefined` | `databaseNames: []` | Strings and regular expressions |
+| Databases (`databaseNames`) | Omit `databaseNames` | `databaseNames: []` | Strings and regular expressions |
 
+- Each key is independent. Setting `databaseNames` alone leaves clusters
+  unrestricted.
 - A string must equal the database name. A regular expression is tested
   against the name as written, so `/orders/` also allows `orders_archive`.
   Only the `i` and `u` flags are accepted.
@@ -281,13 +286,13 @@ databaseNames: ["orders", /^tenant_\d+$/] satisfies DatabaseNamesConfig,
 - The system prompt lists the allowed projects, clusters, and databases in a
   `## Scope` section.
 - `clusterAllowlistMiddleware` rejects tool calls that name a project or
-  cluster outside `dataAccess`. With writes enabled, creating, pausing, or
+  cluster outside `dataAccess.projects`. With writes enabled, creating, pausing, or
   upgrading a cluster must name an allowed cluster, and creating a project is
   rejected.
 - `databaseAllowlistMiddleware` rejects tool calls whose `database` argument
-  is outside `databaseNames`. For `aggregate`, `aggregate_db`, and `explain`,
-  it also checks the target database of `$out` and `$merge` in the pipeline.
-  It does not scan filters or documents.
+  is outside `dataAccess.databaseNames`. For `aggregate`, `aggregate_db`, and
+  `explain`, it also checks the target database of `$out` and `$merge` in the
+  pipeline. It does not scan filters or documents.
 - A rejected call returns an error to the agent, so it can correct itself.
 
 ### What it cannot enforce
@@ -308,7 +313,7 @@ roles.
   connection is a saved link from a stream workspace to a data source, such
   as a cluster. Creating one must name an allowed cluster. Updating or using
   an existing one names only the connection, so if it points at a cluster
-  outside `dataAccess`, the agent can still change it or start a processor
+  outside `dataAccess.projects`, the agent can still change it or start a processor
   that reads or writes through it.
 
 ## MCP credential lifecycle
