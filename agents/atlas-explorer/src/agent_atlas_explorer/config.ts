@@ -55,12 +55,19 @@ import type {
  * is the MCP access token, which can't be limited to specific databases
  * today. What `dataAccess.databaseNames` covers:
  *
- * - Checked: each tool call's `database` argument, the target database of
- *   `$out` and `$merge` in the pipeline of `aggregate`, `aggregate_db`, and
- *   `explain`, and `namespaces` in `atlas_get_performance_advisor`.
- * - Not checked: other parts of an aggregation pipeline.
- * - Not checked: cluster-level `aggregate_db` stages such as `$currentOp`
- *   and `$queryStats`, which report activity on every database.
+ * - Checked:
+ *   - Each tool call's `database` argument.
+ *   - The target database of `$out` and `$merge` in `aggregate`,
+ *     `aggregate_db`, and `explain` pipelines.
+ *   - `namespaces` in `atlas_get_performance_advisor`.
+ *   - Processor databases (`$source`, `$lookup`, `$merge`, `$out`, and
+ *     `dlq`) in `atlas_streams_build` and `atlas_streams_manage`.
+ * - Not checked:
+ *   - Other parts of an aggregation pipeline.
+ *   - Starting an existing stream processor (`start-processor`).
+ *   - Cluster-wide `$source` stages that omit `db`.
+ *   - Cluster-level `aggregate_db` stages such as `$currentOp` and
+ *     `$queryStats`, which report activity on every database.
  * - Not filtered: tool results, so the agent can still see names of
  *   databases it may not use.
  *
