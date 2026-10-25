@@ -21,6 +21,7 @@ features:
 required_secrets:
     aer:
         - OPENAI_API_KEY
+        - ALLOW_WRITE_OPERATIONS
         - ATLAS_MCP_CLIENT_ID
         - ATLAS_MCP_CLIENT_SECRET
     tools:

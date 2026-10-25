@@ -86,7 +86,7 @@ import type { AtlasExplorerConfig } from "@repo/atlas-explorer-agent";
 export const atlasExplorerConfig = {
   llm: {
     provider: "openai",
-    model: "gpt-6-luna",
+    model: "gpt-6.1-sol",
   },
   systemPrompt: {
     name: "",
