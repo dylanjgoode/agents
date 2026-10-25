@@ -98,7 +98,10 @@ export const atlasExplorerConfig = {
       collectionName: "",
     },
   },
-  dataAccess: {},
+  dataAccess: {
+    // Everything except Agent Engine's store and the system databases.
+    databaseNames: [/^(?!mdb_store_|admin$|config$|local$).+$/],
+  },
   diagnostics: {
     logRuntimeLifecycle: true,
   },

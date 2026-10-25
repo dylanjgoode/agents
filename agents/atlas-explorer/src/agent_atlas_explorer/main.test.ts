@@ -24,14 +24,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   approveAggregateWritesMiddleware,
+  buildSystemPrompt,
   prepareAtlasExplorerInput,
-  READ_ONLY_SYSTEM_PROMPT,
   stampClientUser,
   stampResumeClientUserMiddleware,
-  WRITE_ENABLED_SYSTEM_PROMPT,
 } from "@repo/atlas-explorer-agent";
 
 import { atlasExplorerConfig } from "./config.js";
+
+// Built from config.ts the way main.ts builds it, so customizing the persona
+// or dataAccess doesn't break these tests.
+function expectedSystemPrompt(writeEnabled: boolean): string {
+  return buildSystemPrompt(writeEnabled, {
+    ...atlasExplorerConfig.systemPrompt,
+    dataAccess: atlasExplorerConfig.dataAccess,
+  });
+}
 
 const harness = vi.hoisted(() => {
   const tools = [
@@ -219,7 +227,7 @@ describe("Atlas Explorer graph assembly", () => {
           { name: "search_knowledge" },
           { name: "list_knowledge_sources" },
         ],
-        systemPrompt: READ_ONLY_SYSTEM_PROMPT,
+        systemPrompt: expectedSystemPrompt(false),
         skills: ["skills"],
         checkpointer: harness.checkpointer,
         middleware: [
@@ -329,7 +337,7 @@ describe("Atlas Explorer graph assembly", () => {
     expect(
       (harness.deepAgent.mock.calls[0]?.[1] as { systemPrompt?: string })
         .systemPrompt,
-    ).toBe(READ_ONLY_SYSTEM_PROMPT);
+    ).toBe(expectedSystemPrompt(false));
     expect(harness.hitlConfig).toEqual({
       interruptOn: {},
       descriptionPrefix: "MongoDB or Atlas operation pending approval",
@@ -370,7 +378,7 @@ describe("Atlas Explorer graph assembly", () => {
     expect(
       (harness.deepAgent.mock.calls[0]?.[1] as { systemPrompt?: string })
         .systemPrompt,
-    ).toBe(WRITE_ENABLED_SYSTEM_PROMPT);
+    ).toBe(expectedSystemPrompt(true));
     expect(harness.hitlConfig).toEqual({
       interruptOn: {
         mongodb__drop_collection: true,
