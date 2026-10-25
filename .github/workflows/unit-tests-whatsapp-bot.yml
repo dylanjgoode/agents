@@ -1,0 +1,56 @@
+name: WhatsApp bot unit tests
+
+on:
+  pull_request:
+    paths:
+      - "apps/atlas-explorer-whatsapp-bot/**"
+      - "packages/agent-engine-chat/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - "tsconfig.test.base.json"
+      - "vitest.shared.mts"
+      - ".github/actions/**"
+      - ".github/workflows/unit-tests-whatsapp-bot.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/atlas-explorer-whatsapp-bot/**"
+      - "packages/agent-engine-chat/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - "tsconfig.test.base.json"
+      - "vitest.shared.mts"
+      - ".github/actions/**"
+      - ".github/workflows/unit-tests-whatsapp-bot.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: atlas-explorer-whatsapp-bot
+            command: pnpm --filter @repo/atlas-explorer-whatsapp-bot test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/unit-test
+        with:
+          command: ${{ matrix.command }}

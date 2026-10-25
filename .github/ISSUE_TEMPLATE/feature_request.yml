@@ -13,7 +13,7 @@ body:
     attributes:
       label: Agent or Component
       description: Which existing agent or app does this apply to, or is this an idea for a new agent?
-      placeholder: e.g., New agent idea, atlas-explorer, atlas-query-insights, atlas-explorer-slack-bot
+      placeholder: e.g., New agent idea, atlas-explorer, atlas-query-insights, atlas-explorer-slack-bot, atlas-explorer-whatsapp-bot
     validations:
       required: true
 

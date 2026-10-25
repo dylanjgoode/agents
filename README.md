@@ -213,6 +213,11 @@ You host and operate it yourself. Read these limitations before you use it:
 - When deployed, the bot needs its own host and its own MongoDB database to
   store thread state. Run locally, it can start a temporary database instead.
 
+[`apps/atlas-explorer-whatsapp-bot`](apps/atlas-explorer-whatsapp-bot) is a
+second example on the same library. It answers questions from an allowlist of
+WhatsApp numbers and is read-only: it rejects any write Atlas Explorer
+proposes instead of asking for approval.
+
 ## What to expect
 
 These templates are for teams that want to run their own agents and control

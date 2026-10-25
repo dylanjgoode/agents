@@ -229,6 +229,50 @@ describe("registerChatHandlers", () => {
     ]);
   });
 
+  it("names the message's own platform as the client", async () => {
+    const whatsapp = createMockAdapter("whatsapp", {
+      isDM: () => true,
+    });
+    const whatsappBot = new Chat({
+      adapters: { whatsapp },
+      concurrency: "concurrent",
+      logger: "silent",
+      state,
+      userName: BOT_NAME,
+    });
+    registerChatHandlers(whatsappBot, {
+      agent,
+      botName: BOT_NAME,
+      store,
+    });
+    await whatsappBot.initialize();
+    const threadId = "whatsapp:111:15550001111";
+
+    await whatsappBot.processMessage(
+      whatsapp,
+      threadId,
+      createTestMessage("wamid-1", "Which clusters are running?", {
+        threadId,
+        author: { ...author(), userId: "15550001111" },
+      }),
+    );
+
+    expect(agent.invokeInputs).toEqual([
+      {
+        actorId: "whatsapp:15550001111",
+        message: "Which clusters are running?",
+        client: "whatsapp",
+        user: {
+          id: "15550001111",
+          username: "ada",
+          full_name: "Ada Lovelace",
+          actor_id: "whatsapp:15550001111",
+        },
+      },
+    ]);
+    await whatsappBot.shutdown();
+  });
+
   it("does not subscribe an unauthorized mention", async () => {
     const restrictedBot = new Chat({
       adapters: { slack: adapter },

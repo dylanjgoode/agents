@@ -13,7 +13,7 @@ body:
     attributes:
       label: Agent or Component
       description: Which agent, app, or package is this issue related to?
-      placeholder: e.g., atlas-explorer, atlas-query-insights, atlas-explorer-slack-bot
+      placeholder: e.g., atlas-explorer, atlas-query-insights, atlas-explorer-slack-bot, atlas-explorer-whatsapp-bot
     validations:
       required: true
 

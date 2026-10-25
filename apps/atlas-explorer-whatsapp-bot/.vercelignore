@@ -1,0 +1,6 @@
+**/*.test.ts
+**/*.test-helpers.ts
+.env.example
+README.md
+tsconfig.test.json
+vitest.config.ts
